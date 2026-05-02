@@ -1,0 +1,292 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sora);
+  --font-mono: var(--font-space-mono);
+  --font-serif: var(--font-cormorant);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+}
+
+:root {
+  --radius: 0.875rem;
+  --background: #f6f8fb;
+  --foreground: #0f1720;
+  --card: #ffffff;
+  --card-foreground: #0f1720;
+  --popover: #ffffff;
+  --popover-foreground: #0f1720;
+  --primary: #111827;
+  --primary-foreground: #ffffff;
+  --secondary: #eef2f6;
+  --secondary-foreground: #1f2937;
+  --muted: #f0f4f7;
+  --muted-foreground: #5f6c7a;
+  --accent: #0ea67d;
+  --accent-foreground: #f6fffb;
+  --destructive: #c53c4d;
+  --border: #d7e0e8;
+  --input: #d7e0e8;
+  --ring: #00c891;
+  --chart-1: #00c891;
+  --chart-2: #d0ab56;
+  --chart-3: #1d4f40;
+  --chart-4: #4d7f72;
+  --chart-5: #e7845d;
+  --sidebar: #f7f9fc;
+  --sidebar-foreground: #0f1720;
+  --sidebar-primary: #111827;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f0f4f7;
+  --sidebar-accent-foreground: #0f1720;
+  --sidebar-border: #d7e0e8;
+  --sidebar-ring: #00c891;
+}
+
+.dark {
+  --background: #000000;
+  --foreground: #f3f4f6;
+  --card: #080808;
+  --card-foreground: #f3f4f6;
+  --popover: #080808;
+  --popover-foreground: #f3f4f6;
+  --primary: #ffffff;
+  --primary-foreground: #000000;
+  --secondary: #101010;
+  --secondary-foreground: #eceff3;
+  --muted: #111111;
+  --muted-foreground: #9ca3af;
+  --accent: #08b98a;
+  --accent-foreground: #03140f;
+  --destructive: #cf6676;
+  --border: #242424;
+  --input: #242424;
+  --ring: #14d49f;
+  --chart-1: #14d49f;
+  --chart-2: #d8b25f;
+  --chart-3: #78e5ff;
+  --chart-4: #6c8f83;
+  --chart-5: #e49a76;
+  --sidebar: #0a0a0a;
+  --sidebar-foreground: #f3f4f6;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #101010;
+  --sidebar-accent-foreground: #f3f4f6;
+  --sidebar-border: #242424;
+  --sidebar-ring: #14d49f;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/40;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    background-image:
+      radial-gradient(circle at 15% -8%, rgba(72, 185, 152, 0.14), transparent 34%),
+      radial-gradient(circle at 90% 0%, rgba(40, 63, 94, 0.12), transparent 42%),
+      linear-gradient(#f8fafc, #f2f5f8);
+    min-height: 100vh;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .dark body {
+    background-image: none;
+    background-color: #000;
+  }
+
+  ::selection {
+    background: rgba(64, 234, 188, 0.32);
+  }
+}
+
+@layer utilities {
+  .brand-serif {
+    font-family: var(--font-sora), sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  .spadace-grid-bg {
+    background-image:
+      linear-gradient(to right, rgba(16, 21, 19, 0.08) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(16, 21, 19, 0.08) 1px, transparent 1px);
+    background-size: 34px 34px;
+  }
+
+  .fade-up {
+    animation: fade-up 0.75s ease-out both;
+  }
+
+  .delay-1 {
+    animation-delay: 0.08s;
+  }
+
+  .delay-2 {
+    animation-delay: 0.16s;
+  }
+
+  .delay-3 {
+    animation-delay: 0.24s;
+  }
+
+  .float-slow {
+    animation: float-slow 4.8s ease-in-out infinite;
+  }
+
+  .neon-glow {
+    box-shadow:
+      0 0 0 1px rgba(77, 231, 190, 0.4),
+      0 0 24px rgba(77, 231, 190, 0.4),
+      0 0 64px rgba(77, 231, 190, 0.28);
+  }
+}
+
+.geoplus-map-root .maplibregl-ctrl-bottom-right .maplibregl-ctrl {
+  margin: 0 0.75rem 0.75rem 0;
+}
+
+.geoplus-map-root .maplibregl-ctrl-bottom-left .maplibregl-ctrl {
+  margin: 0 0 0.75rem var(--geoplus-left-safe-area, 0.75rem);
+}
+
+.geoplus-map-root .maplibregl-ctrl-scale {
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  border-top: 2px solid color-mix(in srgb, var(--foreground) 70%, transparent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--card) 90%, transparent);
+  color: var(--card-foreground);
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.2);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  padding: 2px 6px;
+  backdrop-filter: blur(6px);
+}
+
+.dark .geoplus-map-root .maplibregl-ctrl-scale {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.geoplus-panel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 42%, var(--border) 58%) color-mix(in srgb, var(--muted) 70%, transparent);
+  scrollbar-gutter: stable;
+}
+
+.geoplus-panel-scroll::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.geoplus-panel-scroll::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--muted) 70%, transparent);
+  border-radius: 999px;
+}
+
+.geoplus-panel-scroll::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 68%, var(--border) 32%),
+    color-mix(in srgb, var(--accent) 46%, var(--border) 54%)
+  );
+  border: 2px solid color-mix(in srgb, var(--card) 75%, transparent);
+  border-radius: 999px;
+}
+
+.geoplus-panel-scroll::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 78%, var(--border) 22%),
+    color-mix(in srgb, var(--accent) 58%, var(--border) 42%)
+  );
+}
+
+.geoplus-horizontal-scrollbar {
+  scrollbar-width: auto;
+  scrollbar-color: color-mix(in srgb, var(--accent) 52%, var(--border) 48%) color-mix(in srgb, var(--muted) 76%, transparent);
+  scrollbar-gutter: stable;
+}
+
+.geoplus-horizontal-scrollbar::-webkit-scrollbar {
+  height: 10px;
+}
+
+.geoplus-horizontal-scrollbar::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--muted) 72%, transparent);
+  border-radius: 999px;
+}
+
+.geoplus-horizontal-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 74%, var(--border) 26%),
+    color-mix(in srgb, var(--accent) 56%, var(--border) 44%)
+  );
+  border: 2px solid color-mix(in srgb, var(--card) 78%, transparent);
+  border-radius: 999px;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}

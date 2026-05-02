@@ -1,0 +1,76 @@
+{
+  "type": "FeatureCollection",
+  "name": "geoplus_point_upload_sample",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Dhaka Hub",
+        "segment": "hub",
+        "status": "active",
+        "trips": 120,
+        "demand": 980
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [90.4125, 23.8103]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Gulshan Store",
+        "segment": "store",
+        "status": "active",
+        "trips": 86,
+        "demand": 640
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [90.4152, 23.7925]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Mirpur Depot",
+        "segment": "warehouse",
+        "status": "planned",
+        "trips": 42,
+        "demand": 420
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [90.3667, 23.8067]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Banani Pickup",
+        "segment": "store",
+        "status": "active",
+        "trips": 64,
+        "demand": 510
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [90.4074, 23.7937]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Uttara Depot",
+        "segment": "warehouse",
+        "status": "paused",
+        "trips": 24,
+        "demand": 260
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [90.3995, 23.8748]
+      }
+    }
+  ]
+}

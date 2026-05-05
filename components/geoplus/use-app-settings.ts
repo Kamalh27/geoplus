@@ -31,6 +31,7 @@ export type AppSettings = {
   defaultBasemap: GeoPlusBasemapId;
   autoZoomToLayers: boolean;
   showLayerTooltips: boolean;
+  showLayerPopups: boolean;
   layerTools: LayerToolSettings;
 };
 
@@ -45,6 +46,7 @@ const defaultSettings: AppSettings = {
   defaultBasemap: FALLBACK_DEFAULT_BASEMAP_ID,
   autoZoomToLayers: true,
   showLayerTooltips: true,
+  showLayerPopups: true,
   layerTools: {
     showInfo: true,
     showRename: true,
@@ -91,6 +93,7 @@ const normalizeSettings = (value: unknown): AppSettings => {
     defaultBasemap: normalizeBasemapId(candidate.defaultBasemap),
     autoZoomToLayers: candidate.autoZoomToLayers ?? defaultSettings.autoZoomToLayers,
     showLayerTooltips: candidate.showLayerTooltips ?? defaultSettings.showLayerTooltips,
+    showLayerPopups: candidate.showLayerPopups ?? defaultSettings.showLayerPopups,
     layerTools: normalizeLayerTools(candidate.layerTools),
   };
 };

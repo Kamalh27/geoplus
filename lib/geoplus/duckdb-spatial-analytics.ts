@@ -1,4 +1,4 @@
-import * as duckdb from "@duckdb/duckdb-wasm";
+import type * as duckdb from "@duckdb/duckdb-wasm";
 import type {
   GeoPlusLayerChartColumn,
   GeoPlusLayerColumnKind,
@@ -72,7 +72,7 @@ const asRecord = (value: unknown): Record<string, unknown> | null => {
 
 const escapeSqlString = (value: string) => value.replace(/'/g, "''");
 
-const quoteSqlIdentifier = (value: string) => `"${value.replace(/"/g, "\"\"")}"`;
+export const quoteSqlIdentifier = (value: string) => `"${value.replace(/"/g, "\"\"")}"`;
 
 const toColumnKind = (columnType: PropertyColumnType): GeoPlusLayerColumnKind => {
   if (columnType === "DOUBLE") {
@@ -84,7 +84,7 @@ const toColumnKind = (columnType: PropertyColumnType): GeoPlusLayerColumnKind =>
   return "text";
 };
 
-const humanizeColumnName = (value: string) =>
+export const humanizeColumnName = (value: string) =>
   value
     .replace(/_/g, " ")
     .trim()
@@ -281,7 +281,7 @@ const toTextValue = (value: unknown): string | null => {
   return String(value);
 };
 
-const formatSqlValue = (value: unknown, columnType: "INTEGER" | "DOUBLE" | "BOOLEAN" | "TEXT") => {
+export const formatSqlValue = (value: unknown, columnType: "INTEGER" | "DOUBLE" | "BOOLEAN" | "TEXT") => {
   if (value === null || value === undefined) {
     return "NULL";
   }
@@ -350,7 +350,7 @@ const getRepresentativePoint = (geometry: GeoJSON.Geometry | null | undefined): 
   return null;
 };
 
-const buildPropertyColumns = (features: GeoJSON.Feature[]): PropertyColumn[] => {
+export const buildPropertyColumns = (features: GeoJSON.Feature[]): PropertyColumn[] => {
   const propertyNames = new Set<string>();
 
   for (const feature of features) {
@@ -384,7 +384,7 @@ const buildPropertyColumns = (features: GeoJSON.Feature[]): PropertyColumn[] => 
   return columns;
 };
 
-const buildPreparedRows = (features: GeoJSON.Feature[]): PreparedFeatureRow[] => {
+export const buildPreparedRows = (features: GeoJSON.Feature[]): PreparedFeatureRow[] => {
   return features.map((feature, featureIndex) => {
     const geometryType = feature.geometry?.type ?? "Unknown";
     const representativePoint = getRepresentativePoint(feature.geometry);
@@ -932,18 +932,19 @@ const resolveDuckDbBundleCandidates = async (): Promise<ResolvedDuckDbBundle[]> 
   return uniqueCandidates;
 };
 
-const initializeDuckDb = async () => {
+export const initializeDuckDb = async () => {
   if (typeof window === "undefined" || typeof Worker === "undefined") {
     throw new Error("DuckDB-WASM is only available in the browser.");
   }
 
+  const duckdbRuntime = await import("@duckdb/duckdb-wasm");
   const bundleCandidates = await resolveDuckDbBundleCandidates();
   let lastError: unknown = null;
 
   for (const bundle of bundleCandidates) {
     const worker = new Worker(bundle.mainWorker);
-    const logger = new duckdb.ConsoleLogger();
-    const db = new duckdb.AsyncDuckDB(logger, worker);
+    const logger = new duckdbRuntime.ConsoleLogger();
+    const db = new duckdbRuntime.AsyncDuckDB(logger, worker);
     try {
       await db.instantiate(bundle.mainModule, bundle.pthreadWorker ?? undefined);
       const connection = await db.connect();
@@ -1335,16 +1336,7 @@ export const runDuckDbSpatialAnalysis = async (args: {
     featureById.set(row.featureId, sourceFeatures[row.featureId]);
   }
 
-  if (typeof window !== "undefined") {
-    return buildFallbackSpatialAnalysis({
-      sourceFeatures,
-      propertyColumns,
-      preparedRows,
-      whereClause,
-      requestedChartLabelColumn: args.chartLabelColumn,
-    });
-  }
-
+  // Remove the window fallback to utilize true DuckDB-WASM
   const { db, worker, connection } = await initializeDuckDb();
   try {
     const createColumnSql = [

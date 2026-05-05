@@ -1,6 +1,20 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  turbopack: {
+    resolveAlias: {
+      "worker_threads": "path", // or any native module that doesn't crash, but actually Turbopack should just ignore it if we use empty string, let's omit turbopack and just use webpack mode explicitly
+    }
+  },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        worker_threads: false,
+      };
+    }
+    return config;
+  },
   async headers() {
     const isProduction = process.env.NODE_ENV === "production";
     const scriptSrc = isProduction
@@ -19,6 +33,7 @@ const nextConfig: NextConfig = {
       "object-src 'none'",
       "form-action 'self'",
       scriptSrc,
+      "worker-src 'self' blob:",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data: https:",

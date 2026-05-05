@@ -1,6 +1,6 @@
 "use client";
 
-import * as duckdb from "@duckdb/duckdb-wasm";
+import type * as duckdb from "@duckdb/duckdb-wasm";
 import { getLocalDuckDbBundles, hasUsableDuckDbBundle, type DuckDbBundle, type ResolvedDuckDbBundle } from "@/lib/geoplus/duckdb-bundles";
 
 type RawVisualizationPoint = {
@@ -68,12 +68,13 @@ const buildFallbackAggregation = (points: RawVisualizationPoint[]) => {
 };
 
 const buildDuckDbAggregationWithBundle = async (points: RawVisualizationPoint[], bundle: ResolvedDuckDbBundle) => {
+  const duckdbRuntime = await import("@duckdb/duckdb-wasm");
   const worker = new Worker(bundle.mainWorker);
   worker.addEventListener("error", (event) => {
     event.preventDefault();
   });
-  const logger = new duckdb.ConsoleLogger();
-  const db = new duckdb.AsyncDuckDB(logger, worker);
+  const logger = new duckdbRuntime.ConsoleLogger();
+  const db = new duckdbRuntime.AsyncDuckDB(logger, worker);
   let connection: duckdb.AsyncDuckDBConnection | null = null;
 
   try {

@@ -3,6 +3,10 @@ import { parseGeoJsonUpload } from "@/lib/geoplus/upload-parsers/geojson-upload-
 import { parseGeoPackageUpload } from "@/lib/geoplus/upload-parsers/geopackage-upload-parser";
 import { parseGeoparquetUpload } from "@/lib/geoplus/upload-parsers/geoparquet-upload-parser";
 import { parseShapefileUpload } from "@/lib/geoplus/upload-parsers/shapefile-upload-parser";
+import { parsePmtilesUpload, parseMbtilesUpload } from "@/lib/geoplus/upload-parsers/pmtiles-upload-parser";
+import { parseCogUpload } from "@/lib/geoplus/upload-parsers/cog-upload-parser";
+import { parseKmlUpload } from "@/lib/geoplus/upload-parsers/kml-upload-parser";
+import { parseZarrUpload } from "@/lib/geoplus/upload-parsers/zarr-upload-parser";
 import type { ParsedUploadLayer, UploadFileParser } from "@/lib/geoplus/upload-parsers/types";
 
 export type { ParsedUploadLayer } from "@/lib/geoplus/upload-parsers/types";
@@ -19,6 +23,14 @@ const parserByExtension: Record<string, UploadFileParser> = {
   ".geopackage": parseGeoPackageUpload,
   ".parquet": parseGeoparquetUpload,
   ".geoparquet": parseGeoparquetUpload,
+  ".pmtiles": parsePmtilesUpload,
+  ".mbtiles": parseMbtilesUpload,
+  ".cog": parseCogUpload,
+  ".tif": parseCogUpload,
+  ".tiff": parseCogUpload,
+  ".kml": parseKmlUpload,
+  ".kmz": parseKmlUpload,
+  ".zarr": parseZarrUpload,
 };
 
 export const supportedUploadExtensions = Object.keys(parserByExtension);
@@ -33,6 +45,9 @@ export const supportedUploadAccept = [
   "application/x-zip-compressed",
   "application/geopackage+sqlite3",
   "application/octet-stream",
+  "image/tiff",
+  "application/vnd.google-earth.kml+xml",
+  "application/vnd.google-earth.kmz",
 ].join(",");
 
 export const getFileExtension = (fileName: string) => {
@@ -41,7 +56,13 @@ export const getFileExtension = (fileName: string) => {
 };
 
 export const parseUploadedSpatialFile = async (file: File): Promise<ParsedUploadLayer> => {
-  const extension = getFileExtension(file.name);
+  const fileName = file.name.toLowerCase();
+  let extension = getFileExtension(file.name);
+  
+  if (fileName.endsWith(".zarr.zip")) {
+    extension = ".zarr";
+  }
+
   const parser = parserByExtension[extension];
 
   if (!parser) {
@@ -50,3 +71,4 @@ export const parseUploadedSpatialFile = async (file: File): Promise<ParsedUpload
 
   return parser(file);
 };
+

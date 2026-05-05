@@ -8,9 +8,11 @@ import { searchNominatimLocations } from "@/components/geoplus/map-search-servic
 import { detectDarkMode, getBasemapStyle, type GeoPlusBasemapId } from "@/components/geoplus/map-style";
 import type { GeoPlusLayerItem, NominatimSearchResult } from "@/components/geoplus/types";
 import type { AppSettings } from "@/components/geoplus/use-app-settings";
-import { buildDeckUserLayers, getDeckLayerTooltip, getGeoJsonLngLatBounds, getLayerLngLatBounds, syncMapLibreUserLayers } from "@/lib/geoplus/map-layer-renderers";
+import { buildDeckUserLayers, getDeckLayerTooltip, getGeoJsonLngLatBounds, getLayerLngLatBounds, syncMapLibreUserLayers, MAPLIBRE_LAYER_PREFIX } from "@/lib/geoplus/map-layer-renderers";
+import { humanizeColumnName } from "@/lib/geoplus/duckdb-spatial-analytics";
 import { registerCogProtocol, unregisterCogProtocol } from "@/lib/geoplus/tilesets/cog-maplibre";
 import { registerPmtilesProtocol, unregisterPmtilesProtocol } from "@/lib/geoplus/tilesets/pmtiles-maplibre";
+import { registerMbtilesProtocol } from "@/lib/geoplus/tilesets/mbtiles-maplibre";
 
 const DEFAULT_FLAT_CENTER: [number, number] = [90.4125, 23.8103];
 const DEFAULT_FLAT_ZOOM = 4;
@@ -38,6 +40,8 @@ export function useGeoPlusMap(
   const deckOverlayRef = useRef<MapboxOverlay | null>(null);
   const scaleControlRef = useRef<maplibregl.ScaleControl | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
+  const popupRef = useRef<maplibregl.Popup | null>(null);
+  const tooltipPopupRef = useRef<maplibregl.Popup | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
   const currentThemeRef = useRef<"dark" | "light" | null>(null);
   const selectedBasemapRef = useRef<GeoPlusBasemapId>(selectedBasemapId);
@@ -153,7 +157,7 @@ export function useGeoPlusMap(
     syncMapLibreUserLayers(map, layers);
   }, []);
 
-  const syncDeckLayers = useCallback((map: maplibregl.Map, layers: GeoPlusLayerItem[]) => {
+  const syncDeckLayers = useCallback((map: maplibregl.Map, currentLayers: GeoPlusLayerItem[]) => {
     let overlay = deckOverlayRef.current;
     if (!overlay) {
       overlay = new MapboxOverlay({
@@ -164,18 +168,20 @@ export function useGeoPlusMap(
       deckOverlayRef.current = overlay;
     }
 
-    const userDeckLayers = buildDeckUserLayers(layers);
+    const userDeckLayers = buildDeckUserLayers(currentLayers);
 
     overlay.setProps({
       layers: userDeckLayers,
-      getTooltip: ({ object }: { object?: Record<string, unknown> }) => 
-        settings?.showLayerTooltips !== false ? getDeckLayerTooltip(object) : null,
+      getTooltip: (info: Record<string, unknown>) => 
+        settings?.showLayerTooltips !== false ? getDeckLayerTooltip(info, currentLayers) : null,
     });
   }, [settings?.showLayerTooltips]);
+
 
   useEffect(() => {
     registerCogProtocol();
     registerPmtilesProtocol();
+    registerMbtilesProtocol();
     return () => {
       unregisterCogProtocol();
       unregisterPmtilesProtocol();
@@ -273,6 +279,107 @@ export function useGeoPlusMap(
     syncMapLibreLayers(map, userLayers);
     void syncDeckLayers(map, userLayers);
   }, [syncDeckLayers, syncMapLibreLayers, userLayers]);
+
+  // Interaction handlers for MapLibre layers
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const buildTooltipHtml = (properties: Record<string, unknown>, layerConfig?: GeoPlusLayerItem) => {
+      const tooltipFields = layerConfig?.interactionConfig?.tooltipFields;
+      if (tooltipFields && tooltipFields.length > 0) {
+        return tooltipFields.map(field => `<b>${humanizeColumnName(field)}:</b> ${String(properties[field] ?? "N/A")}`).join("<br>");
+      }
+
+      if (typeof properties.magnitude === "number" && typeof properties.category === "string") {
+        return `<b>${properties.category.toUpperCase()}</b><br>Magnitude: ${properties.magnitude.toFixed(1)}`;
+      }
+
+      const title = properties.name ?? properties.title;
+      if (typeof title === "string" && title.length > 0) {
+        return `<b>${title}</b>`;
+      }
+      return null;
+    };
+
+    const buildPopupHtml = (properties: Record<string, unknown>, layerConfig?: GeoPlusLayerItem) => {
+      const popupFields = layerConfig?.interactionConfig?.popupFields;
+      const fields = popupFields && popupFields.length > 0 ? popupFields : Object.keys(properties).filter(k => k !== "layer" && k !== "source");
+      
+      const rows = fields.map(field => {
+        const val = properties[field];
+        if (val === null || typeof val === "object") return null;
+        return `<tr><td style="padding-right:12px; font-weight:600; vertical-align:top;">${humanizeColumnName(field)}</td><td>${String(val)}</td></tr>`;
+      }).filter(Boolean).join("");
+
+      return rows.length > 0 ? `<div style="max-height: 200px; overflow-y: auto;"><table style="font-size: 11px;"><tbody>${rows}</tbody></table></div>` : null;
+    };
+
+    const findAppLayer = (maplibreLayerId: string) => {
+      const layerId = maplibreLayerId.replace(new RegExp(`^${MAPLIBRE_LAYER_PREFIX}(src-)?(.*?)(-fill|-line|-point|-marker|-label|-raster)?$`), "$2");
+      return userLayersRef.current.find(l => l.id.replace(/[^a-zA-Z0-9_-]/g, "-") === layerId);
+    };
+
+    const handleMouseMove = (e: maplibregl.MapMouseEvent) => {
+      if (settings?.showLayerTooltips === false) {
+        if (tooltipPopupRef.current) tooltipPopupRef.current.remove();
+        map.getCanvas().style.cursor = "";
+        return;
+      }
+
+      const features = map.queryRenderedFeatures(e.point).filter(f => f.layer.id.startsWith(MAPLIBRE_LAYER_PREFIX));
+      
+      if (features.length > 0) {
+        map.getCanvas().style.cursor = "pointer";
+        const feature = features[0];
+        const appLayer = findAppLayer(feature.layer.id);
+        
+        if (appLayer?.interactionConfig?.tooltipEnabled !== false) {
+          const html = buildTooltipHtml(feature.properties, appLayer);
+          if (html) {
+            if (!tooltipPopupRef.current) {
+              tooltipPopupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "geoplus-tooltip" });
+            }
+            tooltipPopupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+            return;
+          }
+        }
+      } else {
+        map.getCanvas().style.cursor = "";
+      }
+      if (tooltipPopupRef.current) tooltipPopupRef.current.remove();
+    };
+
+    const handleClick = (e: maplibregl.MapMouseEvent) => {
+      if (settings?.showLayerPopups === false) return;
+
+      const features = map.queryRenderedFeatures(e.point).filter(f => f.layer.id.startsWith(MAPLIBRE_LAYER_PREFIX));
+      
+      if (features.length > 0) {
+        const feature = features[0];
+        const appLayer = findAppLayer(feature.layer.id);
+        
+        if (appLayer?.interactionConfig?.popupEnabled !== false) {
+          const html = buildPopupHtml(feature.properties, appLayer);
+          if (html) {
+            if (!popupRef.current) {
+              popupRef.current = new maplibregl.Popup({ closeButton: true, closeOnClick: true, className: "geoplus-popup" });
+            }
+            // For polygons, e.lngLat is just where they clicked. For points we could use geometry coordinates, but e.lngLat is reliable.
+            popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+          }
+        }
+      }
+    };
+
+    map.on("mousemove", handleMouseMove);
+    map.on("click", handleClick);
+
+    return () => {
+      map.off("mousemove", handleMouseMove);
+      map.off("click", handleClick);
+    };
+  }, [settings?.showLayerTooltips, settings?.showLayerPopups]);
 
   useEffect(() => {
     if (!zoomToLayerRequest) {

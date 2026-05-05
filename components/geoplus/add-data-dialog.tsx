@@ -571,7 +571,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                         >
                           <Upload className="size-9 text-muted-foreground transition group-hover:text-accent" />
                           <p className="mt-4 text-[1.02rem] font-medium text-foreground">Drop spatial files here or click to browse</p>
-                          <p className="mt-2 text-sm text-muted-foreground">Supported files: {supportedUploadExtensions.join(", ")}</p>
+                          <p className="mt-2 text-sm text-muted-foreground">Supported formats: GeoJSON (.geojson), JSON (.json), TileJSON (.tilejson), CSV (.csv), TSV (.tsv), Shapefile (.shp or .zip), GeoPackage (.gpkg), Parquet/GeoParquet (.parquet), PMTiles (.pmtiles), COG/GeoTIFF (.tif), KML/KMZ (.kml, .kmz), and Zarr (.zarr, .zarr.zip)</p>
                         </label>
                       ) : null}
                       <Input

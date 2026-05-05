@@ -2,19 +2,7 @@
 
 import { BookMarked, ChevronDown, Eye, Layers3 } from "lucide-react";
 import type { GeoPlusLayerItem, GeoPlusColorRamp, GeoPlusMarkerStyle } from "@/components/geoplus/types";
-import { getLayerGeometryFamilies } from "@/lib/geoplus/layer-helpers";
-
-const COLOR_RAMPS: Record<GeoPlusColorRamp, string[]> = {
-  vivid: ["#22c55e", "#0ea5e9", "#f97316", "#8b5cf6", "#e11d48", "#06b6d4", "#f59e0b", "#10b981"],
-  earth: ["#4d7c0f", "#6b8e23", "#b45309", "#92400e", "#854d0e", "#166534", "#57534e", "#9a3412"],
-  pastel: ["#93c5fd", "#c4b5fd", "#f9a8d4", "#fdba74", "#86efac", "#67e8f9", "#fcd34d", "#a7f3d0"],
-  magma: ["#000004", "#3b0f70", "#8c2981", "#de4968", "#fe9f6d", "#fcfdbf"],
-  inferno: ["#000004", "#420a68", "#932667", "#dd513a", "#fca50a", "#fcffa4"],
-  plasma: ["#0d0887", "#5c01a6", "#9c179e", "#cc4778", "#ed7953", "#f8d624"],
-  viridis: ["#440154", "#414487", "#2a788e", "#22a884", "#7ad151", "#fde725"],
-  ylgnbu: ["#ffffcc", "#c7e9b4", "#7fcdbb", "#41b6c4", "#1d91c0", "#225ea8", "#0c2c84"],
-  orrd: ["#fff7ec", "#fee8c8", "#fdd49e", "#fdbb84", "#fc8d59", "#ef6548", "#d7301f", "#b30000", "#7f0000"],
-};
+import { getLayerGeometryFamilies, getLayerColorRampColors } from "@/lib/geoplus/layer-helpers";
 
 type MapLegendPanelProps = {
   isOpen: boolean;
@@ -121,7 +109,7 @@ export function MapLegendPanel({ isOpen, onToggle, layers, onToggleLayerVisibili
             if (primaryFamily === "Line") baseColor = config?.lineColor ?? "#14b8a6";
 
             const isClassified = config?.colorByField;
-            const rampColors = COLOR_RAMPS[config?.colorRamp ?? "vivid"];
+            const rampColors = getLayerColorRampColors(layer);
 
             return (
               <div key={layer.id} className="rounded-lg border border-border/60 bg-background/50 overflow-hidden">

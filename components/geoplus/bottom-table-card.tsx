@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpDown, ChartNoAxesColumn, ChevronDown, Expand, Filter, Search, Table2, X, ZoomIn, Minimize2, Download, Terminal, Settings2, Database } from "lucide-react";
 
 import { GeoPlusEchartsInsightChart, type GeoPlusEchartsInsightChartHandle } from "@/components/geoplus/echarts-insight-chart";
+import { DuckDbShell } from "@/components/geoplus/duckdb-shell";
 import {
   chartPalettes,
   chartTypeOptions,
@@ -792,10 +793,8 @@ export function GeoPlusBottomTableCard({
                     )}
                   </div>
                 </div>
-                <div className="flex flex-1 w-full flex-col items-center justify-center text-slate-500 dark:text-slate-400 bg-background/95">
-                  <Terminal className="mb-3 size-8 opacity-60" />
-                  <h3 className="text-sm font-semibold text-foreground">DuckDB Shell</h3>
-                  <p className="mt-1 text-xs">A powerful command-line interface for spatial analysis is coming soon.</p>
+                <div className="flex flex-1 w-full min-h-0 bg-background/95">
+                  <DuckDbShell layer={layer} layers={layers || []} />
                 </div>
               </>
             ) : (

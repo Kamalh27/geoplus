@@ -50,6 +50,7 @@ type LayerPanelProps = {
     styleConfig: NonNullable<GeoPlusLayerItem["styleConfig"]>,
   ) => void;
   onSetLayerLabelConfig: (layerId: string, config: { enabled?: boolean; field?: string }) => void;
+  onSetLayerInteractionConfig: (layerId: string, config: { tooltipEnabled?: boolean; popupEnabled?: boolean }) => void;
   onRenameLayer: (layerId: string, nextName: string) => void;
   onRemoveLayer: (layerId: string) => void;
   onReorderLayer: (draggedLayerId: string, targetLayerId: string, placement: "before" | "after") => void;
@@ -102,15 +103,23 @@ const markerSymbolOptions: Array<{ id: GeoPlusMarkerSymbol; label: string; glyph
 ];
 
 const colorRampOptions: Array<{ id: GeoPlusColorRamp; label: string }> = [
-  { id: "vivid", label: "Vivid (Categorical)" },
-  { id: "earth", label: "Earth (Categorical)" },
-  { id: "pastel", label: "Pastel (Categorical)" },
-  { id: "magma", label: "Magma (Sequential)" },
-  { id: "inferno", label: "Inferno (Sequential)" },
-  { id: "plasma", label: "Plasma (Sequential)" },
-  { id: "viridis", label: "Viridis (Sequential)" },
-  { id: "ylgnbu", label: "Yellow-Green-Blue (Sequential)" },
-  { id: "orrd", label: "Orange-Red (Sequential)" },
+  { id: "vivid", label: "Vivid" },
+  { id: "earth", label: "Earth" },
+  { id: "pastel", label: "Pastel" },
+  { id: "magma", label: "Magma" },
+  { id: "inferno", label: "Inferno" },
+  { id: "plasma", label: "Plasma" },
+  { id: "viridis", label: "Viridis" },
+  { id: "ylgnbu", label: "Yellow-Green-Blue" },
+  { id: "orrd", label: "Orange-Red" },
+  { id: "coolwarm", label: "Coolwarm (Diverging)" },
+  { id: "spring", label: "Spring" },
+  { id: "summer", label: "Summer" },
+  { id: "autumn", label: "Autumn" },
+  { id: "winter", label: "Winter" },
+  { id: "jet", label: "Jet" },
+  { id: "bone", label: "Bone" },
+  { id: "copper", label: "Copper" },
 ];
 
 const DEFAULT_STYLE_CONFIG = {
@@ -155,6 +164,8 @@ const DATA_FORMAT_LABELS_BY_EXTENSION: Record<string, string> = {
   json: "GeoJSON",
   zip: "Shapefile",
   shp: "Shapefile",
+  kml: "KML",
+  kmz: "KMZ",
   csv: "CSV",
   tsv: "TSV",
   gpkg: "GeoPackage",
@@ -164,6 +175,8 @@ const DATA_FORMAT_LABELS_BY_EXTENSION: Record<string, string> = {
   tif: "COG",
   tiff: "COG",
   pmtiles: "PMTiles",
+  mbtiles: "MBTiles",
+  zarr: "Zarr",
   mvt: "MVT",
   pbf: "MVT",
   png: "Raster Tile",
@@ -270,6 +283,7 @@ export function LayerPanel({
   onSetLayerStylePreset,
   onSetLayerStyleConfig,
   onSetLayerLabelConfig,
+  onSetLayerInteractionConfig,
   onRenameLayer,
   onRemoveLayer,
   onReorderLayer,
@@ -737,22 +751,48 @@ export function LayerPanel({
                     ref={(element) => {
                       moreMenuPopoverRefs.current[layer.id] = element;
                     }}
-                    className="absolute right-11 top-[4.9rem] z-20 w-56 rounded-lg border border-slate-600/75 bg-slate-950/95 p-3 shadow-[0_14px_34px_rgba(15,23,42,0.45)]"
+                    className="absolute right-11 top-[4.9rem] z-20 w-56 rounded-lg border border-slate-600/75 bg-slate-950/95 p-3 shadow-[0_14px_34px_rgba(15,23,42,0.45)] space-y-3"
                   >
-                    <p className="text-[0.66rem] font-semibold uppercase tracking-[0.11em] text-slate-300">Opacity</p>
-                    <div className="mt-2 flex items-center gap-2">
-                      <SlidersHorizontal className="size-3.5 text-slate-400" />
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={Math.round(layer.opacity * 100)}
-                        onChange={(event) => {
-                          onSetLayerOpacity(layer.id, Number(event.target.value) / 100);
-                        }}
-                        className="h-1.5 w-full accent-emerald-400"
-                      />
-                      <span className="w-9 text-right text-xs font-medium text-slate-200">{Math.round(layer.opacity * 100)}%</span>
+                    <div>
+                      <p className="text-[0.66rem] font-semibold uppercase tracking-[0.11em] text-slate-300">Opacity</p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <SlidersHorizontal className="size-3.5 text-slate-400" />
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={Math.round(layer.opacity * 100)}
+                          onChange={(event) => {
+                            onSetLayerOpacity(layer.id, Number(event.target.value) / 100);
+                          }}
+                          className="h-1.5 w-full accent-emerald-400"
+                        />
+                        <span className="w-9 text-right text-xs font-medium text-slate-200">{Math.round(layer.opacity * 100)}%</span>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-slate-700/75 pt-2">
+                      <p className="text-[0.66rem] font-semibold uppercase tracking-[0.11em] text-slate-300">Interactions</p>
+                      <div className="mt-2 space-y-2">
+                        <label className="flex items-center gap-2 text-xs text-slate-200">
+                          <input
+                            type="checkbox"
+                            className="rounded border-slate-600 bg-slate-900 accent-emerald-500"
+                            checked={layer.interactionConfig?.tooltipEnabled !== false}
+                            onChange={(e) => onSetLayerInteractionConfig(layer.id, { tooltipEnabled: e.target.checked })}
+                          />
+                          Enable Tooltips
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-200">
+                          <input
+                            type="checkbox"
+                            className="rounded border-slate-600 bg-slate-900 accent-emerald-500"
+                            checked={layer.interactionConfig?.popupEnabled !== false}
+                            onChange={(e) => onSetLayerInteractionConfig(layer.id, { popupEnabled: e.target.checked })}
+                          />
+                          Enable Popups
+                        </label>
+                      </div>
                     </div>
                   </div>
                 ) : null}

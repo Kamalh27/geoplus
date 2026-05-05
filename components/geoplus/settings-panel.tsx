@@ -274,6 +274,22 @@ export function SettingsPanel() {
                   <Info className="size-4" />
                 </div>
                 <div>
+                  <p className="text-xs font-semibold text-foreground">Popups</p>
+                  <p className="text-[0.65rem] text-muted-foreground">Show detailed popups on click</p>
+                </div>
+              </div>
+              <SquareSwitch 
+                checked={settings.showLayerPopups} 
+                onCheckedChange={(c) => updateSettings({ showLayerPopups: c })} 
+              />
+            </label>
+
+            <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
+              <div className="flex items-center gap-3">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                  <Info className="size-4" />
+                </div>
+                <div>
                   <p className="text-xs font-semibold text-foreground">Layer Info Action</p>
                   <p className="text-[0.65rem] text-muted-foreground">Show source and data details action</p>
                 </div>

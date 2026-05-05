@@ -105,6 +105,16 @@ const SERVICE_TILESET_PROFILES: Record<GeoPlusServiceType, GeoPlusTilesetProfile
     reason: "COG sources are rendered through the MapLibre COG protocol.",
     visualizationFamily: "raster-tile",
   },
+  mbtiles: {
+    id: "mbtiles-vector-tile",
+    label: "MBTiles Vector Tile",
+    serviceType: "mbtiles",
+    engine: "maplibre",
+    layerType: "mvt",
+    confidence: "high",
+    reason: "MBTiles archives are rendered through a custom MapLibre protocol.",
+    visualizationFamily: "vector-tile",
+  },
 };
 
 export const getServiceTilesetProfile = (serviceType: GeoPlusServiceType) => SERVICE_TILESET_PROFILES[serviceType];

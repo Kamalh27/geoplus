@@ -9,7 +9,7 @@ export type GeoPlusLayerEngine = "deck" | "maplibre";
 export type GeoPlusRendererPreference = "deck";
 export type GeoPlusLayerType = "geojson" | "scatterplot" | "mvt" | "raster-tile" | "wms";
 export type GeoPlusLayerTypePreference = "auto" | GeoPlusLayerType;
-export type GeoPlusServiceType = "wms" | "wmts" | "wfs" | "xyz" | "tms" | "mvt" | "pmtiles" | "cog" | "mlt";
+export type GeoPlusServiceType = "wms" | "wmts" | "wfs" | "xyz" | "tms" | "mvt" | "pmtiles" | "cog" | "mlt" | "mbtiles";
 export type GeoPlusLayerStylePreset = "emerald" | "sky" | "amber" | "rose" | "slate" | "violet" | "lime" | "teal";
 export type GeoPlusLayerDuckDbStatus = "idle" | "processing" | "ready" | "error";
 export type GeoPlusLayerColumnKind = "text" | "number" | "boolean";
@@ -17,7 +17,7 @@ export type GeoPlusSpatialAnalysisOperation = "buffer" | "clip";
 export type GeoPlusSpatialBufferUnit = "meters" | "kilometers" | "miles";
 export type GeoPlusMarkerStyle = "solid" | "ring" | "glow" | "symbol" | "image";
 export type GeoPlusMarkerSymbol = "dot" | "diamond" | "triangle" | "square" | "star" | "pin";
-export type GeoPlusColorRamp = "vivid" | "earth" | "pastel" | "magma" | "inferno" | "plasma" | "viridis" | "ylgnbu" | "orrd";
+export type GeoPlusColorRamp = "vivid" | "earth" | "pastel" | "magma" | "inferno" | "plasma" | "viridis" | "ylgnbu" | "orrd" | "coolwarm" | "spring" | "summer" | "autumn" | "winter" | "jet" | "bone" | "copper" | "custom";
 export type GeoPlusClassificationMethod = "categorical" | "equal-interval" | "quantile";
 
 export type GeoPlusLayerStyleConfig = {
@@ -34,6 +34,7 @@ export type GeoPlusLayerStyleConfig = {
   customMarkerDataUrl?: string;
   colorByField?: string;
   colorRamp?: GeoPlusColorRamp;
+  customColorRamp?: string[];
   classificationMethod?: GeoPlusClassificationMethod;
   classificationClasses?: number;
 };
@@ -114,4 +115,11 @@ export type GeoPlusLayerItem = {
   duckDbRowCount?: number;
   duckDbStatus?: GeoPlusLayerDuckDbStatus;
   duckDbError?: string;
+
+  interactionConfig?: {
+    tooltipEnabled?: boolean;
+    popupEnabled?: boolean;
+    tooltipFields?: string[];
+    popupFields?: string[];
+  };
 };

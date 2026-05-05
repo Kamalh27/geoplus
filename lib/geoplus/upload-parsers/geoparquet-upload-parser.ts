@@ -1,4 +1,4 @@
-import * as duckdb from "@duckdb/duckdb-wasm";
+import type * as duckdb from "@duckdb/duckdb-wasm";
 import { convertWKBToGeometry, convertWKTToGeometry } from "@loaders.gl/gis";
 
 import { getLocalDuckDbBundles, type DuckDbBundle } from "@/lib/geoplus/duckdb-bundles";
@@ -155,6 +155,7 @@ const inferLayerType = (features: GeoJSON.Feature[]) => {
 };
 
 export const parseGeoparquetUpload: UploadFileParser = async (file) => {
+  const duckdbRuntime = await import("@duckdb/duckdb-wasm");
   const bundles = getLocalDuckDbBundles();
   const bundle = bundles.mvp as DuckDbBundle;
 
@@ -163,8 +164,8 @@ export const parseGeoparquetUpload: UploadFileParser = async (file) => {
   }
 
   const worker = new Worker(bundle.mainWorker);
-  const logger = new duckdb.ConsoleLogger();
-  const db = new duckdb.AsyncDuckDB(logger, worker);
+  const logger = new duckdbRuntime.ConsoleLogger();
+  const db = new duckdbRuntime.AsyncDuckDB(logger, worker);
 
   let connection: duckdb.AsyncDuckDBConnection | null = null;
   let registeredFileName: string | null = null;

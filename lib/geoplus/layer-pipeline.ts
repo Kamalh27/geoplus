@@ -18,7 +18,7 @@ export type LayerPipelineDetection = {
   reason: string;
 };
 
-export const serviceOptions: GeoPlusServiceType[] = ["wms", "wmts", "wfs", "xyz", "tms", "mvt", "pmtiles", "cog", "mlt"];
+export const serviceOptions: GeoPlusServiceType[] = ["wms", "wmts", "wfs", "xyz", "tms", "mvt", "pmtiles", "cog", "mlt", "mbtiles"];
 
 export const serviceUrlPlaceholders: Record<GeoPlusServiceType, string> = {
   wms: "https://example.com/geoserver/wms?layers=workspace:layer_name",
@@ -31,6 +31,7 @@ export const serviceUrlPlaceholders: Record<GeoPlusServiceType, string> = {
   pmtiles: "https://pmtiles.io/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles",
   cog: "https://labs.geomatico.es/maplibre-cog-protocol/data/image.tif",
   mlt: "https://example.com/tiles/{z}/{x}/{y}.mlt",
+  mbtiles: "https://example.com/data/archive.mbtiles",
 };
 
 export const rendererOptions: { id: GeoPlusRendererPreference; label: string }[] = [

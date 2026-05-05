@@ -754,7 +754,24 @@ export function GeoPlusShell() {
                       }),
                     );
                   }}
-                  onRenameLayer={(layerId, nextName) => {
+                  onSetLayerInteractionConfig={(layerId, config) => {
+                    setLayers((previousLayers) =>
+                      previousLayers.map((layer) => {
+                        if (layer.id !== layerId) {
+                          return layer;
+                        }
+                        return {
+                          ...layer,
+                          interactionConfig: {
+                            ...(layer.interactionConfig ?? {}),
+                            ...(config.tooltipEnabled !== undefined ? { tooltipEnabled: config.tooltipEnabled } : {}),
+                            ...(config.popupEnabled !== undefined ? { popupEnabled: config.popupEnabled } : {}),
+                          },
+                        };
+                      }),
+                    );
+                  }}
+                  onRenameLayer={async (layerId, nextName) => {
                     setLayers((previousLayers) =>
                       previousLayers.map((layer) =>
                         layer.id === layerId

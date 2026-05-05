@@ -14,8 +14,16 @@ import type {
 import { buildDeckTilesetLayer } from "@/lib/geoplus/tilesets/deck-tile-layer-scripts";
 import { isCogMapLibreLayer, syncCogMapLibreLayer } from "@/lib/geoplus/tilesets/cog-maplibre";
 import { isPmtilesMapLibreLayer, syncPmtilesMapLibreLayer } from "@/lib/geoplus/tilesets/pmtiles-maplibre";
+import { isMbtilesMapLibreLayer, syncMbtilesMapLibreLayer } from "@/lib/geoplus/tilesets/mbtiles-maplibre";
+import { isZarrMapLibreLayer, syncZarrMapLibreLayer } from "@/lib/geoplus/tilesets/zarr-maplibre";
 
-const MAPLIBRE_LAYER_PREFIX = "geoplus-user-";
+import { getLayerColorRampColors } from "@/lib/geoplus/layer-helpers";
+import { humanizeColumnName } from "@/lib/geoplus/duckdb-spatial-analytics";
+
+
+
+
+export const MAPLIBRE_LAYER_PREFIX = "geoplus-user-";
 
 type DeckPoint = {
   position: [number, number];
@@ -121,18 +129,6 @@ const LAYER_STYLE_PRESETS: Record<GeoPlusLayerStylePreset, LayerStyleColors> = {
     point: [45, 212, 191],
     label: [19, 78, 74],
   },
-};
-
-const COLOR_RAMPS: Record<GeoPlusColorRamp, string[]> = {
-  vivid: ["#22c55e", "#0ea5e9", "#f97316", "#8b5cf6", "#e11d48", "#06b6d4", "#f59e0b", "#10b981"],
-  earth: ["#4d7c0f", "#6b8e23", "#b45309", "#92400e", "#854d0e", "#166534", "#57534e", "#9a3412"],
-  pastel: ["#93c5fd", "#c4b5fd", "#f9a8d4", "#fdba74", "#86efac", "#67e8f9", "#fcd34d", "#a7f3d0"],
-  magma: ["#000004", "#3b0f70", "#8c2981", "#de4968", "#fe9f6d", "#fcfdbf"],
-  inferno: ["#000004", "#420a68", "#932667", "#dd513a", "#fca50a", "#fcffa4"],
-  plasma: ["#0d0887", "#5c01a6", "#9c179e", "#cc4778", "#ed7953", "#f8d624"],
-  viridis: ["#440154", "#414487", "#2a788e", "#22a884", "#7ad151", "#fde725"],
-  ylgnbu: ["#ffffcc", "#c7e9b4", "#7fcdbb", "#41b6c4", "#1d91c0", "#225ea8", "#0c2c84"],
-  orrd: ["#fff7ec", "#fee8c8", "#fdd49e", "#fdbb84", "#fc8d59", "#ef6548", "#d7301f", "#b30000", "#7f0000"],
 };
 
 const MARKER_SYMBOLS: Record<GeoPlusMarkerSymbol, string> = {
@@ -437,7 +433,7 @@ const buildAttributeColorSpec = (
     return null;
   }
 
-  const ramp = COLOR_RAMPS[styleSpec.colorRamp] ?? COLOR_RAMPS.vivid;
+  const ramp = getLayerColorRampColors(layer);
 
   if (styleSpec.classificationMethod === "categorical") {
     const uniqueValues = new Set<string>();
@@ -698,7 +694,7 @@ export const syncMapLibreUserLayers = (map: maplibregl.Map, layers: GeoPlusLayer
       continue;
     }
 
-    if (isDeckTileLayerType(layer.layerType) && !isPmtilesMapLibreLayer(layer) && !isCogMapLibreLayer(layer)) {
+    if (isDeckTileLayerType(layer.layerType) && !isPmtilesMapLibreLayer(layer) && !isCogMapLibreLayer(layer) && !isMbtilesMapLibreLayer(layer) && !isZarrMapLibreLayer(layer)) {
       continue;
     }
 
@@ -724,6 +720,27 @@ export const syncMapLibreUserLayers = (map: maplibregl.Map, layers: GeoPlusLayer
           line: styleSpec.line,
           point: styleSpec.point,
         },
+      });
+      continue;
+    }
+    if (isMbtilesMapLibreLayer(layer)) {
+      void syncMbtilesMapLibreLayer({
+        map,
+        layer,
+        layerOpacity,
+        styleColors: {
+          fill: styleSpec.fill,
+          line: styleSpec.line,
+          point: styleSpec.point,
+        },
+      });
+      continue;
+    }
+    if (isZarrMapLibreLayer(layer)) {
+      void syncZarrMapLibreLayer({
+        map,
+        layer,
+        layerOpacity,
       });
       continue;
     }
@@ -838,7 +855,7 @@ export const buildDeckUserLayers = (layers: GeoPlusLayerItem[]): DeckLayer[] => 
       continue;
     }
 
-    if (isPmtilesMapLibreLayer(layer) || isCogMapLibreLayer(layer)) {
+    if (isPmtilesMapLibreLayer(layer) || isCogMapLibreLayer(layer) || isMbtilesMapLibreLayer(layer) || isZarrMapLibreLayer(layer)) {
       continue;
     }
 
@@ -1232,19 +1249,42 @@ export const getGeoJsonLngLatBounds = (geojsonValue: unknown): maplibregl.LngLat
 
 export const getLayerLngLatBounds = (layer: GeoPlusLayerItem): maplibregl.LngLatBoundsLike | null => getGeoJsonLngLatBounds(layer.inlineData);
 
-export const getDeckLayerTooltip = (object?: Record<string, unknown>) => {
-  if (!object) {
+export const getDeckLayerTooltip = (info: Record<string, unknown>, appLayers: GeoPlusLayerItem[]) => {
+  const object = info?.object as Record<string, unknown> | undefined;
+  if (!object || !info.layer) {
     return null;
   }
 
+  // Find corresponding app layer
+  const layerInfo = info.layer as { id: string };
+  const layerId = layerInfo.id.replace(/^user-/, "");
+  const appLayer = appLayers.find((l) => toSafeLayerId(l.id) === layerId);
+
+  // If layer explicitly disables tooltips, return null
+  if (appLayer?.interactionConfig?.tooltipEnabled === false) {
+    return null;
+  }
+
+  const properties = asRecord(object.properties) ?? asRecord(object) ?? {};
+
+  // If specific fields are requested, build a multi-line tooltip
+  const tooltipFields = appLayer?.interactionConfig?.tooltipFields;
+  if (tooltipFields && tooltipFields.length > 0) {
+    const lines = tooltipFields.map((field) => {
+      const val = properties[field];
+      return `${humanizeColumnName(field)}: ${val ?? "N/A"}`;
+    });
+    return { text: lines.join("\n") };
+  }
+
+  // Default fallback behavior
   if (typeof object.magnitude === "number" && typeof object.category === "string") {
     return {
       text: `${object.category.toUpperCase()}\nMagnitude: ${object.magnitude.toFixed(1)}`,
     };
   }
 
-  const properties = asRecord(object.properties);
-  const title = properties?.name ?? properties?.title;
+  const title = properties.name ?? properties.title;
   if (typeof title === "string" && title.length > 0) {
     return { text: title };
   }

@@ -260,23 +260,74 @@ export function SpatialToolsPanel({
             </div>
           </DialogHeader>
 
-          <div className="py-8 text-center space-y-4">
-            <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-              <Hammer className="size-8 text-slate-400 dark:text-slate-500" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-foreground">Coming Soon</h3>
-              <p className="mt-2 text-sm text-muted-foreground px-6">
-                We are currently building this tool. It will be available in an upcoming update to GeoPlus.
-              </p>
-            </div>
-          </div>
+          {selectedTool?.id === "filter" ? (
+            <div className="py-4 space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">Target Layer</label>
+                <select
+                  value={selectedLayerId ?? ""}
+                  onChange={(e) => onSelectedLayerChange?.(e.target.value)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:border-accent focus:ring-1 focus:ring-accent outline-none"
+                >
+                  <option value="" disabled>Select a layer to filter...</option>
+                  {layers.filter(l => l.engine === "deck" || l.layerType === "geojson" || l.layerType === "scatterplot").map(l => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
 
-          <div className="flex justify-end border-t border-border/60 pt-4">
-            <Button onClick={() => setSelectedTool(null)} className="w-full sm:w-auto">
-              Close
-            </Button>
-          </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">SQL WHERE Clause</label>
+                <Input
+                  id="filter-where"
+                  defaultValue={layers.find(l => l.id === selectedLayerId)?.duckDbWhereClause ?? ""}
+                  placeholder="e.g. status = 'active' AND value > 100"
+                  className="font-mono text-xs"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Use standard SQL syntax to filter features by attribute values.
+                </p>
+              </div>
+              
+              <div className="flex justify-end pt-2 gap-2">
+                <Button variant="outline" onClick={() => setSelectedTool(null)}>
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={() => {
+                    const clause = (document.getElementById("filter-where") as HTMLInputElement)?.value || "";
+                    if (selectedLayerId) {
+                      void onApplyFilter(selectedLayerId, clause);
+                      setSelectedTool(null);
+                    }
+                  }}
+                  disabled={!selectedLayerId}
+                >
+                  Apply Filter
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="py-8 text-center space-y-4">
+              <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+                <Hammer className="size-8 text-slate-400 dark:text-slate-500" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Coming Soon</h3>
+                <p className="mt-2 text-sm text-muted-foreground px-6">
+                  We are currently building this tool. It will be available in an upcoming update to GeoPlus.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {selectedTool?.id !== "filter" && (
+            <div className="flex justify-end border-t border-border/60 pt-4">
+              <Button onClick={() => setSelectedTool(null)} className="w-full sm:w-auto">
+                Close
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

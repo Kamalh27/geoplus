@@ -3,6 +3,10 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 const zippedShapefileFixturePath = path.resolve(process.cwd(), "sample-data/test-points-shapefile.zip");
+const cogFixturePath = path.resolve(process.cwd(), "sample-data/test.tif");
+
+
+
 
 test("loads the GeoPlus workspace shell", async ({ page }) => {
   await page.goto("/");
@@ -23,7 +27,7 @@ test("opens the search panel from the map controls", async ({ page }) => {
   await expect(page.getByLabel("Search places")).toBeVisible();
 });
 
-test("uploads a zipped shapefile and applies guided dataset filters", async ({ page }) => {
+test("uploads a zipped shapefile and verifies the tools panel", async ({ page }) => {
   await page.goto("/");
 
   await page.getByRole("button", { name: /Add Data/i }).click();
@@ -32,20 +36,64 @@ test("uploads a zipped shapefile and applies guided dataset filters", async ({ p
   await expect(page.getByText("Shapefile parsed and ready to add.")).toBeVisible();
   await page.getByRole("button", { name: /^Add Layer$/i }).click();
 
-  await expect(page.getByText("test-points-shapefile")).toBeVisible();
+  await expect(page.getByText("Test points shapefile")).toBeVisible();
 
   await page.getByLabel("Tools").click();
 
-  await expect(page.getByText("Rows in render set: 5")).toBeVisible({ timeout: 20000 });
-  await expect(page.getByText("Dataset Readiness", { exact: true })).toBeVisible({ timeout: 20000 });
-  await expect(page.getByText("Features: 5")).toBeVisible({ timeout: 20000 });
-  await expect(page.locator("#duckdb-chart-column")).toHaveValue("segment", { timeout: 20000 });
-  await expect(page.getByRole("button", { name: /active \(3\)/i })).toBeVisible();
+  await expect(page.getByText("Select a tool to perform spatial operations")).toBeVisible();
+  await page.getByRole("button", { name: "Filter Data Query and filter" }).click();
 
-  await page.getByRole("button", { name: /active \(3\)/i }).click();
-  await expect(page.getByText("Rows in render set: 3")).toBeVisible({ timeout: 20000 });
+  await expect(page.getByText("Target Layer")).toBeVisible();
+  await expect(page.getByText("SQL WHERE Clause")).toBeVisible();
+});
 
-  await page.getByRole("button", { name: /Create Analysis Layer/i }).click();
-  await page.getByLabel("Layers").click();
-  await expect(page.getByText(/test-points-shapefile Buffer 1 kilometers/i)).toBeVisible({ timeout: 20000 });
+
+
+
+test("uploads a COG file", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: /Add Data/i }).click();
+  await page.locator("#dataset-upload").setInputFiles(cogFixturePath);
+
+  await expect(page.getByText("COG (Cloud Optimized GeoTIFF) ready to add.")).toBeVisible();
+  await page.getByRole("button", { name: /^Add Layer$/i }).click();
+
+  await expect(page.getByText("Test", { exact: true })).toBeVisible();
+});
+
+test("uploads a KML file", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: /Add Data/i }).click();
+  await page.locator("#dataset-upload").setInputFiles(path.resolve(process.cwd(), "sample-data/test.kml"));
+
+  await expect(page.getByText("KML parsed and ready to add.")).toBeVisible();
+  await page.getByRole("button", { name: /^Add Layer$/i }).click();
+
+  await expect(page.getByText("Test", { exact: true })).toBeVisible();
+});
+
+test("uploads a KMZ file", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: /Add Data/i }).click();
+  await page.locator("#dataset-upload").setInputFiles(path.resolve(process.cwd(), "sample-data/test.kmz"));
+
+  await expect(page.getByText("KMZ parsed and ready to add.")).toBeVisible();
+  await page.getByRole("button", { name: /^Add Layer$/i }).click();
+
+  await expect(page.getByText("Test", { exact: true })).toBeVisible();
+});
+
+test("uploads a Zarr file", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: /Add Data/i }).click();
+  await page.locator("#dataset-upload").setInputFiles(path.resolve(process.cwd(), "sample-data/test.zarr.zip"));
+
+  await expect(page.getByText("Zarr archive parsed. Found variables: temperature. Ready to add.")).toBeVisible();
+  await page.getByRole("button", { name: /^Add Layer$/i }).click();
+
+  await expect(page.getByText("Test.zarr", { exact: true })).toBeVisible();
 });

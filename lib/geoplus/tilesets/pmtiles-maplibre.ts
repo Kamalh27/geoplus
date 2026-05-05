@@ -88,6 +88,10 @@ const getPmtilesArchiveUrl = (sourceUrl: string) => {
     return sourceUrl;
   }
 
+  if (sourceUrl.startsWith("blob:")) {
+    return sourceUrl;
+  }
+
   if (!/^https?:\/\//i.test(sourceUrl)) {
     return sourceUrl;
   }

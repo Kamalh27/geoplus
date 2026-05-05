@@ -6,7 +6,7 @@ import type { GeoPlusLayerItem } from "@/components/geoplus/types";
 const MBTILES_PROTOCOL_NAME = "mbtiles";
 const MBTILES_LAYER_PREFIX = "geoplus-user-mbtiles-";
 let protocolRegistered = false;
-let sqlJsPromise: Promise<any> | null = null;
+let sqlJsPromise: Promise<unknown> | null = null;
 const activeDatabases = new Map<string, Database>();
 
 type LayerStyleColors = {
@@ -39,7 +39,7 @@ export const registerMbtilesProtocol = () => {
     return;
   }
 
-  maplibregl.addProtocol(MBTILES_PROTOCOL_NAME, async (params, _abortController) => {
+  maplibregl.addProtocol(MBTILES_PROTOCOL_NAME, async (params) => {
     // Expected URL format: mbtiles://<blob-url-encoded>/{z}/{x}/{y}
     const urlParts = params.url.replace(`${MBTILES_PROTOCOL_NAME}://`, "").split("/");
     if (urlParts.length < 4) {
@@ -66,7 +66,7 @@ export const registerMbtilesProtocol = () => {
 
     const stmt = db.prepare("SELECT tile_data FROM tiles WHERE zoom_level = :z AND tile_column = :x AND tile_row = :y");
     if (stmt.step()) {
-      const row = stmt.getAsObject();
+      const row = stmt.getAsObject({ ":z": z, ":x": x, ":y": tmsY });
       stmt.free();
       if (row.tile_data) {
         return { data: row.tile_data as Uint8Array | ArrayBuffer };
@@ -80,7 +80,7 @@ export const registerMbtilesProtocol = () => {
 };
 
 export const loadMbtilesDatabase = async (blobUrl: string, file: File): Promise<Database> => {
-  const SQL = await ensureSqlJs();
+  const SQL: any = await ensureSqlJs();
   const buffer = await file.arrayBuffer();
   const db = new SQL.Database(new Uint8Array(buffer));
   activeDatabases.set(blobUrl, db);
@@ -113,7 +113,7 @@ export const cleanupMbtilesDatabase = (blobUrl: string) => {
 };
 
 export const isMbtilesMapLibreLayer = (layer: Pick<GeoPlusLayerItem, "engine" | "serviceType">) =>
-  layer.engine === "maplibre" && layer.serviceType === ("mbtiles" as any);
+  layer.engine === "maplibre" && layer.serviceType === ("mbtiles" as unknown);
 
 export const syncMbtilesMapLibreLayer = async (args: {
   map: maplibregl.Map;

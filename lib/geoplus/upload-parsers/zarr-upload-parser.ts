@@ -7,7 +7,7 @@ export const parseZarrUpload: UploadFileParser = async (file) => {
     const store = ZipFileStore.fromBlob(file);
     
     // We access the internal info promise to quickly find arrays without needing consolidated metadata
-    const info = await (store as any).info;
+    const info = await (store as unknown as { info: Promise<{ entries: Record<string, unknown> }> }).info;
     if (!info || !info.entries) {
       throw new Error("Invalid or empty ZIP file.");
     }

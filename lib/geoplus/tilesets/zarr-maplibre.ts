@@ -1,5 +1,6 @@
 import maplibregl from "maplibre-gl";
 import { ZarrLayer } from "@carbonplan/zarr-layer";
+import type * as zarr from "zarrita";
 import JSZip from "jszip";
 import { JSZipStore } from "./jszip-zarr-store";
 import type { GeoPlusLayerItem } from "@/components/geoplus/types";
@@ -49,14 +50,14 @@ export const syncZarrMapLibreLayer = async (args: {
 
     const zarrLayer = new ZarrLayer({
       id: layerId,
-      store: store as any,
+      store: store as unknown as zarr.Readable,
       variable: data.variable,
       opacity: layerOpacity,
       colormap: ["#440154", "#3b528b", "#21908d", "#5dc963", "#fde725"],
       clim: [0, 100],
     });
 
-    map.addLayer(zarrLayer as any);
+    map.addLayer(zarrLayer as unknown as maplibregl.LayerSpecification);
   } catch (error) {
     console.error(`Failed to sync Zarr layer ${layer.name}:`, error);
   }

@@ -3,8 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   turbopack: {
     resolveAlias: {
-      "worker_threads": "path", // or any native module that doesn't crash, but actually Turbopack should just ignore it if we use empty string, let's omit turbopack and just use webpack mode explicitly
-    }
+      worker_threads: "./lib/empty.ts",
+    },
   },
   webpack: (config, { isServer }) => {
     if (!isServer) {

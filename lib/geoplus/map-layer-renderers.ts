@@ -25,6 +25,10 @@ import { humanizeColumnName } from "@/lib/geoplus/duckdb-spatial-analytics";
 
 export const MAPLIBRE_LAYER_PREFIX = "geoplus-user-";
 
+const isArrayOrTypedArray = (value: unknown): value is ArrayLike<unknown> & Iterable<unknown> => {
+  return Array.isArray(value) || (ArrayBuffer.isView(value) && !(value instanceof DataView));
+};
+
 type DeckPoint = {
   position: [number, number];
   weight: number;
@@ -276,7 +280,7 @@ const extractScatterPoints = (inlineData: unknown): DeckPoint[] => {
       continue;
     }
 
-    const coordinates = Array.isArray(geometry.coordinates) ? geometry.coordinates : [];
+    const coordinates = isArrayOrTypedArray(geometry.coordinates) ? geometry.coordinates : [];
     const longitude = Number(coordinates[0]);
     const latitude = Number(coordinates[1]);
     if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
@@ -313,7 +317,7 @@ const updateAnchorBounds = (bounds: AnchorBounds, longitude: number, latitude: n
 };
 
 const walkAnchorCoordinates = (value: unknown, bounds: AnchorBounds) => {
-  if (!Array.isArray(value) || value.length === 0) {
+  if (!isArrayOrTypedArray(value) || value.length === 0) {
     return;
   }
 
@@ -334,7 +338,7 @@ const getGeometryAnchor = (geometryValue: unknown): [number, number] | null => {
   }
 
   if (geometry.type === "Point") {
-    const coordinates = Array.isArray(geometry.coordinates) ? geometry.coordinates : [];
+    const coordinates = isArrayOrTypedArray(geometry.coordinates) ? geometry.coordinates : [];
     const longitude = Number(coordinates[0]);
     const latitude = Number(coordinates[1]);
     if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
@@ -583,7 +587,7 @@ const getLayerSymbolMarkerPoints = (
       continue;
     }
 
-    const coordinates = Array.isArray(geometry.coordinates) ? geometry.coordinates : [];
+    const coordinates = isArrayOrTypedArray(geometry.coordinates) ? geometry.coordinates : [];
     const longitude = Number(coordinates[0]);
     const latitude = Number(coordinates[1]);
     if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
@@ -618,7 +622,7 @@ const getLayerImageMarkerPoints = (
       continue;
     }
 
-    const coordinates = Array.isArray(geometry.coordinates) ? geometry.coordinates : [];
+    const coordinates = isArrayOrTypedArray(geometry.coordinates) ? geometry.coordinates : [];
     const longitude = Number(coordinates[0]);
     const latitude = Number(coordinates[1]);
     if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
@@ -1160,7 +1164,7 @@ const updateBounds = (bounds: BoundsAccumulator, longitude: number, latitude: nu
 };
 
 const walkCoordinates = (value: unknown, bounds: BoundsAccumulator) => {
-  if (!Array.isArray(value) || value.length === 0) {
+  if (!isArrayOrTypedArray(value) || value.length === 0) {
     return;
   }
 

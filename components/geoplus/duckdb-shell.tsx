@@ -58,9 +58,10 @@ export function DuckDbShell({ layer }: { layer: GeoPlusLayerItem | null; layers:
       } catch (err) {
         console.error("Failed to init DuckDB for Shell:", err);
         if (isMounted) {
+          const message = err instanceof Error ? err.message : "Unknown initialization error.";
           setHistory((prev) => [
             ...prev,
-            { id: Date.now().toString(), type: "error", content: "Failed to initialize DuckDB." },
+            { id: Date.now().toString(), type: "error", content: `Failed to initialize DuckDB. ${message}` },
           ]);
         }
       }

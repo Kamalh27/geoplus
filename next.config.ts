@@ -17,9 +17,12 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     const isProduction = process.env.NODE_ENV === "production";
-    const scriptSrc = isProduction
-      ? "script-src 'self' 'unsafe-inline'"
-      : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
+    // DuckDB-WASM requires WebAssembly compilation permission under CSP.
+    const scriptSrcParts = ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"];
+    if (!isProduction) {
+      scriptSrcParts.push("'unsafe-eval'");
+    }
+    const scriptSrc = `script-src ${scriptSrcParts.join(" ")}`;
     // GeoPlus lets users connect to arbitrary remote geospatial services, so CSP must
     // allow outbound fetches beyond a fixed vendor allowlist.
     const connectSrc = isProduction

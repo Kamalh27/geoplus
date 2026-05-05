@@ -1,5 +1,4 @@
 import type { UploadFileParser } from "@/lib/geoplus/upload-parsers/types";
-import * as zarr from "zarrita";
 import ZipFileStore from "@zarrita/storage/zip";
 
 export const parseZarrUpload: UploadFileParser = async (file) => {

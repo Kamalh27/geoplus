@@ -37,7 +37,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { isGeoJsonFeatureCollection } from "@/lib/geoplus/duckdb-spatial-analytics";
 import { cn } from "@/lib/utils";
-import { getLayerGeometryFamilies, getLayerSourceFeatureCollection } from "@/lib/geoplus/layer-helpers";
+import { getLayerGeometryFamilies } from "@/lib/geoplus/layer-helpers";
 
 type LayerPanelProps = {
   layers: GeoPlusLayerItem[];

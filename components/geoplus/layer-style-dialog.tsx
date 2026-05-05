@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -324,7 +325,7 @@ export function LayerStyleDialog({
 
                     {layer.styleConfig?.customMarkerDataUrl && (
                       <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-border/70 bg-background/70 px-2 py-1.5">
-                        <img src={layer.styleConfig.customMarkerDataUrl} alt="Custom marker preview" className="h-7 w-7 object-contain" />
+                        <Image src={layer.styleConfig.customMarkerDataUrl} alt="Custom marker preview" width={28} height={28} className="object-contain" />
                         <span className="text-[0.65rem] text-muted-foreground">Marker image ready</span>
                       </div>
                     )}

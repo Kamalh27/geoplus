@@ -10,10 +10,9 @@ type MapAttributionControlProps = {
   lines: GeoPlusAttributionLine[];
   onToggle: () => void;
   onClose: () => void;
-  showScaleBar?: boolean;
 };
 
-export function MapAttributionControl({ isOpen, lines, onToggle, onClose, showScaleBar }: MapAttributionControlProps) {
+export function MapAttributionControl({ isOpen, lines, onToggle, onClose }: MapAttributionControlProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {

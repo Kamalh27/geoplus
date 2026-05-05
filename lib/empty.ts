@@ -1,3 +1,4 @@
 export class Worker {}
 export const parentPort = null;
-export default {};
+const emptyObject = {};
+export default emptyObject;

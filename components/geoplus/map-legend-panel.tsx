@@ -1,7 +1,7 @@
 "use client";
 
 import { BookMarked, ChevronDown, Eye, Layers3 } from "lucide-react";
-import type { GeoPlusLayerItem, GeoPlusColorRamp, GeoPlusMarkerStyle } from "@/components/geoplus/types";
+import type { GeoPlusLayerItem, GeoPlusMarkerStyle } from "@/components/geoplus/types";
 import { getLayerGeometryFamilies, getLayerColorRampColors } from "@/lib/geoplus/layer-helpers";
 
 type MapLegendPanelProps = {

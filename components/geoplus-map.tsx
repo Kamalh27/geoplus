@@ -109,7 +109,6 @@ export function GeoPlusMap({ selectedBasemapId, layers, zoomToLayerRequest = nul
           lines={getBasemapAttributionLines(selectedBasemapId)}
           onToggle={toggleAttributionPanel}
           onClose={closeAttributionPanel}
-          showScaleBar={settings.showScaleBar}
         />
       </div>
     </div>

@@ -6,7 +6,7 @@ import type { GeoPlusLayerItem } from "@/components/geoplus/types";
 const MBTILES_PROTOCOL_NAME = "mbtiles";
 const MBTILES_LAYER_PREFIX = "geoplus-user-mbtiles-";
 let protocolRegistered = false;
-let sqlJsPromise: Promise<any> | null = null;
+let sqlJsPromise: Promise<{ Database: new (data?: Uint8Array) => Database }> | null = null;
 const activeDatabases = new Map<string, Database>();
 
 type LayerStyleColors = {

@@ -6,7 +6,7 @@ import type { GeoPlusLayerItem } from "@/components/geoplus/types";
 const MBTILES_PROTOCOL_NAME = "mbtiles";
 const MBTILES_LAYER_PREFIX = "geoplus-user-mbtiles-";
 let protocolRegistered = false;
-let sqlJsPromise: Promise<unknown> | null = null;
+let sqlJsPromise: Promise<any> | null = null;
 const activeDatabases = new Map<string, Database>();
 
 type LayerStyleColors = {
@@ -80,7 +80,7 @@ export const registerMbtilesProtocol = () => {
 };
 
 export const loadMbtilesDatabase = async (blobUrl: string, file: File): Promise<Database> => {
-  const SQL: any = await ensureSqlJs();
+  const SQL = await ensureSqlJs();
   const buffer = await file.arrayBuffer();
   const db = new SQL.Database(new Uint8Array(buffer));
   activeDatabases.set(blobUrl, db);

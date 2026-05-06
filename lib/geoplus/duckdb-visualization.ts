@@ -1,7 +1,7 @@
 "use client";
 
 import type * as duckdb from "@duckdb/duckdb-wasm";
-import { getLocalDuckDbBundles, hasUsableDuckDbBundle, type DuckDbBundle, type ResolvedDuckDbBundle } from "@/lib/geoplus/duckdb-bundles";
+import { getLocalDuckDbBundles, hasUsableDuckDbBundle, type ResolvedDuckDbBundle } from "@/lib/geoplus/duckdb-bundles";
 
 type RawVisualizationPoint = {
   longitude: number;
@@ -124,9 +124,10 @@ const buildDuckDbAggregation = async (points: RawVisualizationPoint[]) => {
     throw new Error("DuckDB worker is unavailable in this environment.");
   }
 
+  const duckdbRuntime = await import("@duckdb/duckdb-wasm");
   const bundles = getLocalDuckDbBundles();
-  const mvpBundle = bundles.mvp as DuckDbBundle;
-  const candidates = [mvpBundle].filter(hasUsableDuckDbBundle);
+  const selectedBundle = await duckdbRuntime.selectBundle(bundles);
+  const candidates = [selectedBundle, bundles.eh, bundles.mvp].filter(hasUsableDuckDbBundle);
 
   if (candidates.length === 0) {
     throw new Error("DuckDB bundle could not be resolved.");

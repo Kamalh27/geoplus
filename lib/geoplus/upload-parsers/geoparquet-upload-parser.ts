@@ -1,7 +1,7 @@
 import type * as duckdb from "@duckdb/duckdb-wasm";
 import { convertWKBToGeometry, convertWKTToGeometry } from "@loaders.gl/gis";
 
-import { getLocalDuckDbBundles, type DuckDbBundle } from "@/lib/geoplus/duckdb-bundles";
+import { getLocalDuckDbBundles } from "@/lib/geoplus/duckdb-bundles";
 import type { UploadFileParser } from "@/lib/geoplus/upload-parsers/types";
 
 type ColumnInfo = {
@@ -154,10 +154,34 @@ const inferLayerType = (features: GeoJSON.Feature[]) => {
   return hasOnlyPoints ? "scatterplot" : "geojson";
 };
 
+const validateParquetSignature = async (file: File) => {
+  if (file.size < 8) {
+    throw new Error("The selected Parquet file is incomplete or invalid.");
+  }
+
+  const header = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+  const footer = new Uint8Array(await file.slice(file.size - 4).arrayBuffer());
+  const hasParquetMagic =
+    header[0] === 0x50 &&
+    header[1] === 0x41 &&
+    header[2] === 0x52 &&
+    header[3] === 0x31 &&
+    footer[0] === 0x50 &&
+    footer[1] === 0x41 &&
+    footer[2] === 0x52 &&
+    footer[3] === 0x31;
+
+  if (!hasParquetMagic) {
+    throw new Error("The selected file is not a valid Parquet/GeoParquet file.");
+  }
+};
+
 export const parseGeoparquetUpload: UploadFileParser = async (file) => {
+  await validateParquetSignature(file);
+
   const duckdbRuntime = await import("@duckdb/duckdb-wasm");
   const bundles = getLocalDuckDbBundles();
-  const bundle = bundles.mvp as DuckDbBundle;
+  const bundle = await duckdbRuntime.selectBundle(bundles);
 
   if (!bundle.mainModule || !bundle.mainWorker) {
     throw new Error("Unable to initialize GeoParquet parser runtime.");

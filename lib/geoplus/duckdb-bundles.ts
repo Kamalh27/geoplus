@@ -1,5 +1,5 @@
 export type DuckDbBundle = {
-  mainModule: string | null;
+  mainModule: string;
   mainWorker: string | null;
   pthreadWorker?: string | null;
 };

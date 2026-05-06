@@ -7,7 +7,7 @@ import type {
   GeoPlusLayerFilterOption,
   GeoPlusLayerFilterRange,
 } from "@/components/geoplus/types";
-import { getLocalDuckDbBundles, hasUsableDuckDbBundle, type DuckDbBundle, type ResolvedDuckDbBundle } from "@/lib/geoplus/duckdb-bundles";
+import { getLocalDuckDbBundles, hasUsableDuckDbBundle, type ResolvedDuckDbBundle } from "@/lib/geoplus/duckdb-bundles";
 
 type PropertyColumnType = "DOUBLE" | "BOOLEAN" | "TEXT";
 
@@ -431,10 +431,10 @@ const buildDatasetProfile = (args: {
 };
 
 
-const resolveDuckDbBundleCandidates = async (): Promise<ResolvedDuckDbBundle[]> => {
+const resolveDuckDbBundleCandidates = async (duckdbRuntime: typeof duckdb): Promise<ResolvedDuckDbBundle[]> => {
   const bundles = getLocalDuckDbBundles();
-  const mvpBundle = bundles.mvp as DuckDbBundle;
-  const candidates = [mvpBundle].filter(hasUsableDuckDbBundle);
+  const selectedBundle = await duckdbRuntime.selectBundle(bundles);
+  const candidates = [selectedBundle, bundles.eh, bundles.mvp].filter(hasUsableDuckDbBundle);
 
   if (candidates.length === 0) {
     throw new Error("DuckDB-WASM bundle could not be resolved.");
@@ -461,7 +461,7 @@ export const initializeDuckDb = async () => {
   }
 
   const duckdbRuntime = await import("@duckdb/duckdb-wasm");
-  const bundleCandidates = await resolveDuckDbBundleCandidates();
+  const bundleCandidates = await resolveDuckDbBundleCandidates(duckdbRuntime);
   let lastError: unknown = null;
 
   for (const bundle of bundleCandidates) {

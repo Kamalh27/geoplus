@@ -16,9 +16,10 @@ type GeoPlusMapProps = {
   zoomToLayerRequest?: { layerId: string; nonce: number } | null;
   zoomToFeatureRequest?: { feature: GeoJSON.Feature; nonce: number } | null;
   onToggleLayerVisibility?: (layerId: string) => void;
+  onClearFilters?: () => void;
 };
 
-export function GeoPlusMap({ selectedBasemapId, layers, zoomToLayerRequest = null, zoomToFeatureRequest = null, onToggleLayerVisibility }: GeoPlusMapProps) {
+export function GeoPlusMap({ selectedBasemapId, layers, zoomToLayerRequest = null, zoomToFeatureRequest = null, onToggleLayerVisibility, onClearFilters }: GeoPlusMapProps) {
   const { settings } = useAppSettings();
   const hasOverlayLayers = layers.length > 0;
 
@@ -88,6 +89,7 @@ export function GeoPlusMap({ selectedBasemapId, layers, zoomToLayerRequest = nul
           onResetNavigation={resetNavigation}
           onGoToCurrentLocation={goToCurrentLocation}
           onToggleFullscreen={toggleFullscreen}
+          onClearFilters={onClearFilters}
           settings={settings}
         />
 

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { GeoPlusBasemapId } from "@/components/geoplus/map-style";
 
 const APP_SETTINGS_KEY = "geoplus-app-settings";
 const APP_SETTINGS_SYNC_EVENT = "geoplus-app-settings-sync";
 const FALLBACK_DEFAULT_BASEMAP_ID: GeoPlusBasemapId = "satellite";
 const VALID_BASEMAP_IDS = new Set<GeoPlusBasemapId>(["dark", "light", "satellite", "osm", "terrain", "none"]);
+const VALID_THEMES = new Set<AppTheme>(["dark", "light", "system"]);
 
 export type AppTheme = "dark" | "light" | "system";
 export type LayerToolSettings = {
@@ -80,10 +81,17 @@ const normalizeLayerTools = (value: unknown): LayerToolSettings => {
   };
 };
 
+const normalizeTheme = (value: unknown): AppTheme => {
+  if (typeof value !== "string") {
+    return defaultSettings.theme;
+  }
+  return VALID_THEMES.has(value as AppTheme) ? (value as AppTheme) : defaultSettings.theme;
+};
+
 const normalizeSettings = (value: unknown): AppSettings => {
   const candidate = value && typeof value === "object" ? (value as Partial<AppSettings>) : {};
   return {
-    theme: candidate.theme ?? defaultSettings.theme,
+    theme: normalizeTheme(candidate.theme),
     showZoomControl: candidate.showZoomControl ?? defaultSettings.showZoomControl,
     showSearchControl: candidate.showSearchControl ?? defaultSettings.showSearchControl,
     showScaleBar: candidate.showScaleBar ?? defaultSettings.showScaleBar,
@@ -105,6 +113,7 @@ type AppSettingsUpdate = Omit<Partial<AppSettings>, "layerTools"> & {
 export function useAppSettings() {
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [isLoaded, setIsLoaded] = useState(false);
+  const broadcastTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     const readPersistedSettings = () => {
@@ -121,7 +130,10 @@ export function useAppSettings() {
     };
 
     const syncFromStorage = () => {
-      setSettings(readPersistedSettings());
+      const nextSettings = readPersistedSettings();
+      setSettings((previousSettings) => {
+        return JSON.stringify(previousSettings) === JSON.stringify(nextSettings) ? previousSettings : nextSettings;
+      });
     };
 
     const onStorage = (event: StorageEvent) => {
@@ -144,38 +156,75 @@ export function useAppSettings() {
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener(APP_SETTINGS_SYNC_EVENT, onAppSettingsSync);
+      if (broadcastTimeoutRef.current !== null) {
+        window.clearTimeout(broadcastTimeoutRef.current);
+        broadcastTimeoutRef.current = null;
+      }
     };
   }, []);
 
   useEffect(() => {
-    if (isLoaded) {
-      // Apply theme to document
-      const applyTheme = (theme: AppTheme) => {
-        const root = document.documentElement;
-        root.classList.remove("light", "dark");
-        if (theme === "system") {
-          const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-          root.classList.add(systemTheme);
-        } else {
-          root.classList.add(theme);
-        }
-      };
-      
-      applyTheme(settings.theme);
+    if (!isLoaded) {
+      return;
     }
+
+    const root = document.documentElement;
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+    const applyTheme = () => {
+      root.classList.remove("light", "dark");
+      if (settings.theme === "system") {
+        root.classList.add(mediaQuery.matches ? "dark" : "light");
+        return;
+      }
+      root.classList.add(settings.theme);
+    };
+
+    applyTheme();
+
+    if (settings.theme !== "system") {
+      return;
+    }
+
+    const handleSystemThemeChange = () => applyTheme();
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleSystemThemeChange);
+      return () => {
+        mediaQuery.removeEventListener("change", handleSystemThemeChange);
+      };
+    }
+
+    mediaQuery.addListener(handleSystemThemeChange);
+    return () => {
+      mediaQuery.removeListener(handleSystemThemeChange);
+    };
   }, [settings.theme, isLoaded]);
 
   const updateSettings = (newSettings: AppSettingsUpdate) => {
-    setSettings((prev) => {
-      const updated: AppSettings = {
-        ...prev,
+    let updatedSettings: AppSettings | null = null;
+    setSettings((previousSettings) => {
+      updatedSettings = {
+        ...previousSettings,
         ...newSettings,
-        layerTools: newSettings.layerTools ? { ...prev.layerTools, ...newSettings.layerTools } : prev.layerTools,
+        layerTools: newSettings.layerTools
+          ? { ...previousSettings.layerTools, ...newSettings.layerTools }
+          : previousSettings.layerTools,
       };
-      localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(updated));
-      window.dispatchEvent(new Event(APP_SETTINGS_SYNC_EVENT));
-      return updated;
+      return updatedSettings;
     });
+
+    if (!updatedSettings) {
+      return;
+    }
+
+    localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(updatedSettings));
+    if (broadcastTimeoutRef.current !== null) {
+      window.clearTimeout(broadcastTimeoutRef.current);
+    }
+    broadcastTimeoutRef.current = window.setTimeout(() => {
+      window.dispatchEvent(new Event(APP_SETTINGS_SYNC_EVENT));
+      broadcastTimeoutRef.current = null;
+    }, 0);
   };
 
   return {

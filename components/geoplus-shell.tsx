@@ -288,6 +288,7 @@ export function GeoPlusShell() {
   const [sessionBasemapId, setSessionBasemapId] = useState<GeoPlusBasemapId | null>(null);
   const [layers, setLayers] = useState<GeoPlusLayerItem[]>([]);
   const [selectedToolsLayerId, setSelectedToolsLayerId] = useState("");
+  const [openToolRequest, setOpenToolRequest] = useState<{ toolId: string; nonce: number } | null>(null);
   const [bottomPanelTab, setBottomPanelTab] = useState<"table" | "shell" | "none">("none");
   const [isChartPanelVisible, setIsChartPanelVisible] = useState(false);
   const [zoomToLayerRequest, setZoomToLayerRequest] = useState<{ layerId: string; nonce: number } | null>(null);
@@ -432,6 +433,14 @@ export function GeoPlusShell() {
     [],
   );
 
+  const handleClearAllFilters = useCallback(() => {
+    for (const layer of layersRef.current) {
+      if (layer.duckDbWhereClause) {
+        void applyDuckDbFilter(layer.id, "");
+      }
+    }
+  }, [applyDuckDbFilter]);
+
   const onAddLayer = useCallback(
     (layer: GeoPlusLayerItem) => {
       const nextLayer: GeoPlusLayerItem =
@@ -509,6 +518,14 @@ export function GeoPlusShell() {
   const openLayerTableInToolsTab = useCallback((layerId: string) => {
     setSelectedToolsLayerId(layerId);
     setBottomPanelTab("table");
+  }, []);
+
+  const openLayerFilterInToolsTab = useCallback((layerId: string) => {
+    setSelectedToolsLayerId(layerId);
+    setActiveTab("tools");
+    setIsSidebarCollapsed(false);
+    setBottomPanelTab("none");
+    setOpenToolRequest({ toolId: "filter", nonce: Date.now() });
   }, []);
 
   const openShellInToolsTab = useCallback(() => {
@@ -602,6 +619,7 @@ export function GeoPlusShell() {
           onToggleLayerVisibility={(layerId) => {
             setLayers((previous) => previous.map((l) => (l.id === layerId ? { ...l, visible: !l.visible } : l)));
           }}
+          onClearFilters={handleClearAllFilters}
         />
       </div>
 
@@ -627,7 +645,7 @@ export function GeoPlusShell() {
             <PanelLeftOpen className="size-4" />
           </Button>
         ) : (
-          <aside className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 shadow-[0_16px_46px_rgba(15,23,42,0.25)] ring-1 ring-black/5 backdrop-blur-md dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:ring-white/10">
+          <aside className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-lg backdrop-blur-md">
             <GeoPlusHeader 
               settings={settings}
               onOpenDialog={openHelpDialog}
@@ -766,6 +784,15 @@ export function GeoPlusShell() {
                             ...(layer.interactionConfig ?? {}),
                             ...(config.tooltipEnabled !== undefined ? { tooltipEnabled: config.tooltipEnabled } : {}),
                             ...(config.popupEnabled !== undefined ? { popupEnabled: config.popupEnabled } : {}),
+                            ...(config.tooltipFields !== undefined ? { tooltipFields: config.tooltipFields } : {}),
+                            ...(config.popupFields !== undefined ? { popupFields: config.popupFields } : {}),
+                            ...(config.fieldDisplayNames !== undefined ? { fieldDisplayNames: config.fieldDisplayNames } : {}),
+                            ...(config.hoverHighlightEnabled !== undefined ? { hoverHighlightEnabled: config.hoverHighlightEnabled } : {}),
+                            ...(config.hoverHighlightColor !== undefined ? { hoverHighlightColor: config.hoverHighlightColor } : {}),
+                            ...(config.hoverLineColor !== undefined ? { hoverLineColor: config.hoverLineColor } : {}),
+                            ...(config.hoverFillOpacity !== undefined ? { hoverFillOpacity: config.hoverFillOpacity } : {}),
+                            ...(config.hoverLineWidth !== undefined ? { hoverLineWidth: config.hoverLineWidth } : {}),
+                            ...(config.hoverPointRadius !== undefined ? { hoverPointRadius: config.hoverPointRadius } : {}),
                           },
                         };
                       }),
@@ -813,13 +840,16 @@ export function GeoPlusShell() {
                       nonce: Date.now(),
                     });
                   }}
+                  onOpenLayerFilter={openLayerFilterInToolsTab}
                   onOpenLayerTable={openLayerTableInToolsTab}
                   onOpenLayerChart={openLayerChartInToolsTab}
                 />
               ) : activeTab === "tools" ? (
                 <SpatialToolsPanel
+                  key={openToolRequest?.nonce ?? "tools-panel"}
                   layers={layers}
                   selectedLayerId={selectedToolsLayerId}
+                  initialToolId={openToolRequest?.toolId}
                   onApplyFilter={async (layerId, whereClause, chartLabelColumn) => {
                     await applyDuckDbFilter(layerId, whereClause, chartLabelColumn);
                   }}
@@ -895,6 +925,9 @@ export function GeoPlusShell() {
             feature,
             nonce: Date.now(),
           });
+        }}
+        onApplyFilter={(layerId, whereClause) => {
+          void applyDuckDbFilter(layerId, whereClause);
         }}
       />
       <GeoPlusRightInsightsPanel 

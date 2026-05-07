@@ -27,6 +27,7 @@ type GeoPlusBottomTableCardProps = {
   onSelectLayer?: (layerId: string) => void;
   reserveRightPanelSpace?: boolean;
   onZoomToFeature?: (feature: GeoJSON.Feature) => void;
+  onApplyFilter?: (layerId: string, whereClause: string) => void;
 };
 
 type TableRow = {
@@ -315,6 +316,7 @@ export function GeoPlusBottomTableCard({
   onSelectLayer,
   reserveRightPanelSpace = false,
   onZoomToFeature,
+  onApplyFilter,
 }: GeoPlusBottomTableCardProps) {
   const isReallyVisible = isVisible !== undefined ? isVisible : activeTab !== "none";
   const [localActiveTab, setLocalActiveTab] = useState<"table" | "shell">("table");
@@ -650,7 +652,7 @@ export function GeoPlusBottomTableCard({
           : "pointer-events-none absolute bottom-3 left-[var(--geoplus-left-safe-area,0.75rem)] right-[350px] z-30 hidden lg:block xl:right-[390px]"
       }
     >
-      <div className={`pointer-events-auto overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-slate-900 shadow-[0_18px_48px_rgba(15,23,42,0.28)] ring-1 ring-black/5 backdrop-blur-md dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:ring-white/10 ${isCompact ? "h-[220px]" : "h-[360px]"}`}>
+      <div className={`pointer-events-auto overflow-hidden rounded-2xl border border-border bg-background/95 text-foreground shadow-lg backdrop-blur-md ${isCompact ? "h-[220px]" : "h-[360px]"}`}>
           <div className={`flex items-center justify-between border-b border-border/70 bg-background/75 pl-2 pr-3 ${isCompact ? "h-10" : "h-12"}`}>
             <div className="flex h-full items-center gap-1">
               {(internalActiveTab === "table" || layer) && (
@@ -794,14 +796,14 @@ export function GeoPlusBottomTableCard({
                   </div>
                 </div>
                 <div className="flex flex-1 w-full min-h-0 bg-background/95">
-                  <DuckDbShell layer={layer} layers={layers || []} />
+                  <DuckDbShell layer={layer} onApplyFilter={onApplyFilter} />
                 </div>
               </>
             ) : (
               <>
                 <div
                   ref={mainScrollRef}
-                  className="geoplus-panel-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto"
+                  className="geoplus-panel-scroll geoplus-horizontal-scrollbar min-h-0 flex-1 overflow-x-auto overflow-y-auto"
                   onScroll={() => {
                     const source = mainScrollRef.current;
                     const target = bottomHorizontalScrollRef.current;

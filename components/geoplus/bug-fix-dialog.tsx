@@ -98,7 +98,7 @@ export function BugFixDialog({ isOpen, onOpenChange }: BugFixDialogProps) {
                   password: event.target.checked ? "" : previous.password,
                 }))
               }
-              className="h-4 w-4 rounded border-gray-300 text-accent focus:ring-accent"
+              className="h-4 w-4 rounded border-input text-accent focus:ring-accent"
             />
             <label htmlFor="geoplus-bug-anonymous" className="text-sm font-medium text-foreground">
               Submit Anonymously

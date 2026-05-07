@@ -441,7 +441,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
         className="h-[min(82vh,44rem)] w-[calc(100%-1rem)] sm:w-[calc(100%-2rem)] lg:w-[calc(100%-3rem)] max-w-[64rem] gap-0 overflow-hidden border border-border/80 bg-background p-0 text-foreground shadow-[0_26px_70px_rgba(15,23,42,0.28)] dark:border-accent/30 dark:shadow-[0_34px_78px_rgba(0,0,0,0.62)]"
       >
         <form className="flex h-full min-h-0 flex-col" onSubmit={onSubmit}>
-          <header className="flex items-center justify-between border-b border-border/80 bg-gradient-to-r from-background via-background to-muted/40 px-6 py-5 dark:to-slate-900">
+          <header className="flex items-center justify-between border-b border-border/80 bg-gradient-to-r from-background via-background to-muted/40 px-6 py-5">
             <div className="space-y-1">
               <DialogTitle className="text-[1.3rem] font-semibold tracking-tight text-foreground sm:text-[1.45rem]">Add New Layer</DialogTitle>
               <DialogDescription className="sr-only">
@@ -508,7 +508,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
             <div className="space-y-5 px-6 py-6">
               {mode === "existing-layers" ? (
                 <div className="space-y-4">
-                  <div className="rounded-lg border border-dashed border-border/80 bg-muted/35 px-5 py-6 text-center dark:bg-slate-900/40">
+                  <div className="rounded-lg border border-dashed border-border/80 bg-muted/35 px-5 py-6 text-center">
                     <p className="text-sm font-semibold text-foreground">No saved layers available</p>
                     <p className="mt-1 text-sm text-muted-foreground">Sign in to view layers from your account.</p>
                   </div>
@@ -519,7 +519,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                       {existingLayers.map((layer) => (
                         <div
                           key={layer.id}
-                          className="flex items-center gap-2 rounded-md border border-border/80 bg-card/70 px-3 py-2.5 text-sm text-foreground dark:bg-slate-900/70"
+                          className="flex items-center gap-2 rounded-md border border-border/80 bg-card/70 px-3 py-2.5 text-sm text-foreground"
                         >
                           <Database className="size-3.5 text-muted-foreground" />
                           <span className="truncate">{layer.name}</span>
@@ -557,7 +557,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                         value={layerName}
                         onChange={(event) => setLayerName(event.target.value)}
                         placeholder={`${modeLabel} layer`}
-                        className="border-border/80 bg-background text-foreground placeholder:text-muted-foreground focus-visible:border-accent focus-visible:ring-accent/20 dark:bg-slate-900/55"
+                        className="border-border/80 bg-background text-foreground placeholder:text-muted-foreground focus-visible:border-accent focus-visible:ring-accent/20"
                       />
                     </div>
                   )}
@@ -567,7 +567,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                       {!fileName ? (
                         <label
                           htmlFor="dataset-upload"
-                          className="group flex min-h-52 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border/80 bg-muted/30 px-6 py-8 text-center transition hover:border-accent/70 hover:bg-accent/8 dark:bg-slate-900/45 dark:hover:bg-slate-900/70"
+                          className="group flex min-h-52 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border/80 bg-muted/30 px-6 py-8 text-center transition hover:border-accent/70 hover:bg-accent/8"
                         >
                           <Upload className="size-9 text-muted-foreground transition group-hover:text-accent" />
                           <p className="mt-4 text-[1.02rem] font-medium text-foreground">Drop spatial files here or click to browse</p>
@@ -621,10 +621,10 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                             </button>
                           </div>
 
-                          <div className="rounded-xl border border-border/80 bg-muted/30 p-4 dark:bg-slate-900/45">
+                          <div className="rounded-xl border border-border/80 bg-muted/30 p-4">
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex min-w-0 items-start gap-3">
-                                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border/80 bg-background/70 text-accent dark:bg-slate-900/70">
+                                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border/80 bg-background/70 text-accent">
                                   <FileText className="size-4" />
                                 </span>
                                 <div className="min-w-0">
@@ -651,7 +651,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                                 id="source-projection"
                                 value={sourceProjectionChoice}
                                 onChange={(event) => setSourceProjectionChoice(event.target.value as GeoPlusSourceProjectionChoice)}
-                                className="h-10 w-full rounded-md border border-border/80 bg-background px-3 text-sm text-foreground outline-none transition focus-visible:border-accent focus-visible:ring-[3px] focus-visible:ring-accent/20 dark:bg-slate-900/55"
+                                className="h-10 w-full rounded-md border border-border/80 bg-background px-3 text-sm text-foreground outline-none transition focus-visible:border-accent focus-visible:ring-[3px] focus-visible:ring-accent/20"
                               >
                                 {projectionOptions.map((option) => (
                                   <option key={option.value} value={option.value}>
@@ -688,7 +688,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                           setHasFetchedUrl(false);
                           setUrlFetchError("");
                         }}
-                        className="border-border/80 bg-background text-foreground placeholder:text-muted-foreground focus-visible:border-accent focus-visible:ring-accent/20 dark:bg-slate-900/55"
+                        className="border-border/80 bg-background text-foreground placeholder:text-muted-foreground focus-visible:border-accent focus-visible:ring-accent/20"
                         placeholder="https://example.com/data.geojson or s3://bucket/file.pmtiles"
                       />
                       <p className="text-xs text-muted-foreground">Supports public HTTP(S) links and cloud storage URLs.</p>
@@ -723,7 +723,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                                 "rounded-sm border px-3 py-1.5 text-[0.74rem] font-semibold uppercase tracking-[0.08em] transition",
                                 serviceType === option
                                   ? "border-accent bg-accent/15 text-accent"
-                                  : "border-border/80 bg-muted/35 text-muted-foreground hover:text-foreground dark:bg-slate-900/55",
+                                  : "border-border/80 bg-muted/35 text-muted-foreground hover:text-foreground",
                               )}
                             >
                               {option}
@@ -733,7 +733,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                       </div>
 
                       {activeServiceProfile ? (
-                        <div className="rounded-md border border-border/80 bg-muted/30 px-3 py-2.5 dark:bg-slate-900/45">
+                        <div className="rounded-md border border-border/80 bg-muted/30 px-3 py-2.5">
                           <p className="text-[0.66rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Tileset Visualization</p>
                           <p className="mt-1 text-sm font-medium text-foreground">{activeServiceProfile.label}</p>
                           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -754,7 +754,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                           value={layerName}
                           onChange={(event) => setLayerName(event.target.value)}
                           placeholder={`${modeLabel} layer`}
-                          className="border-border/80 bg-background text-foreground placeholder:text-muted-foreground focus-visible:border-accent focus-visible:ring-accent/20 dark:bg-slate-900/55"
+                          className="border-border/80 bg-background text-foreground placeholder:text-muted-foreground focus-visible:border-accent focus-visible:ring-accent/20"
                         />
                       </div>
 
@@ -766,7 +766,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                           id="service-url"
                           value={serviceUrl}
                           onChange={(event) => setServiceUrl(event.target.value)}
-                          className="border-border/80 bg-background text-foreground placeholder:text-muted-foreground focus-visible:border-accent focus-visible:ring-accent/20 dark:bg-slate-900/55"
+                          className="border-border/80 bg-background text-foreground placeholder:text-muted-foreground focus-visible:border-accent focus-visible:ring-accent/20"
                           placeholder={serviceUrlPlaceholders[serviceType]}
                         />
                       </div>
@@ -779,7 +779,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                       value={gisText}
                       onChange={(event) => setGisText(event.target.value)}
                       placeholder='{"type":"FeatureCollection","features":[...]} or WKT geometry'
-                      className="max-h-52 min-h-40 w-full rounded-md border border-border/80 bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition placeholder:text-muted-foreground focus-visible:border-accent focus-visible:ring-[3px] focus-visible:ring-accent/20 dark:bg-slate-900/55"
+                      className="max-h-52 min-h-40 w-full rounded-md border border-border/80 bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none transition placeholder:text-muted-foreground focus-visible:border-accent focus-visible:ring-[3px] focus-visible:ring-accent/20"
                     />
                   ) : null}
 
@@ -801,7 +801,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                                 "rounded-sm border px-2.5 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.08em] transition",
                                 isActive
                                   ? "border-accent bg-accent/15 text-accent"
-                                  : "border-border/80 bg-muted/35 text-muted-foreground hover:text-foreground dark:bg-slate-900/55",
+                                  : "border-border/80 bg-muted/35 text-muted-foreground hover:text-foreground",
                               )}
                             >
                               {option}
@@ -822,7 +822,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                                 "rounded-md border px-3 py-3 text-left transition",
                                 isSelected
                                   ? "border-accent bg-accent/10 text-foreground"
-                                  : "border-border/80 bg-muted/35 text-foreground/90 hover:border-accent/40 dark:bg-slate-900/55 dark:text-slate-300",
+                                  : "border-border/80 bg-muted/35 text-foreground/90 hover:border-accent/40",
                               )}
                             >
                               <p className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-accent">{option.serviceType}</p>
@@ -834,7 +834,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                       </div>
 
                       {selectedSampleLayer ? (
-                        <div className="rounded-md border border-border/80 bg-muted/30 px-3 py-2.5 dark:bg-slate-900/45">
+                        <div className="rounded-md border border-border/80 bg-muted/30 px-3 py-2.5">
                           <p className="text-[0.66rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Sample Preview</p>
                           <p className="mt-1 text-sm font-medium text-foreground">{selectedSampleLayer.name}</p>
                           <p className="mt-0.5 break-all font-mono text-[0.66rem] text-muted-foreground">{selectedSampleLayer.sourceUrl}</p>
@@ -858,7 +858,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
 
             <div className="flex items-center gap-2 self-end sm:self-auto">
               {layerConfigError ? <p className="mr-2 text-xs text-destructive">{layerConfigError}</p> : null}
-              <Button type="button" variant="outline" className="border-border/80 bg-background text-foreground hover:bg-muted/65 dark:bg-slate-900/60" onClick={() => setIsOpen(false)}>
+              <Button type="button" variant="outline" className="border-border/80 bg-background text-foreground hover:bg-muted/65" onClick={() => setIsOpen(false)}>
                 Cancel
               </Button>
               {mode === "existing-layers" ? null : (

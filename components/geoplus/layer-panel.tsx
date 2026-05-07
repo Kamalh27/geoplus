@@ -26,18 +26,20 @@ import {
   Waves,
   type LucideIcon,
   X,
+  MessageSquareText,
 } from "lucide-react";
 
 import { LayerStyleDialog } from "@/components/geoplus/layer-style-dialog";
+import { LayerInteractionDialog } from "@/components/geoplus/layer-interaction-dialog";
 import { AddDataDialog } from "@/components/geoplus/add-data-dialog";
-import type { GeoPlusColorRamp, GeoPlusLayerItem, GeoPlusLayerStylePreset, GeoPlusMarkerStyle, GeoPlusMarkerSymbol } from "@/components/geoplus/types";
+import type { GeoPlusColorRamp, GeoPlusLayerItem, GeoPlusLayerStylePreset, GeoPlusMarkerStyle, GeoPlusMarkerSymbol, GeoPlusLayerStyleConfig } from "@/components/geoplus/types";
 import { useAppSettings } from "@/components/geoplus/use-app-settings";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { isGeoJsonFeatureCollection } from "@/lib/geoplus/duckdb-spatial-analytics";
 import { cn } from "@/lib/utils";
-import { getLayerGeometryFamilies } from "@/lib/geoplus/layer-helpers";
+import { getLayerGeometryFamilies, getLayerLabelFieldOptions } from "@/lib/geoplus/layer-helpers";
 
 type LayerPanelProps = {
   layers: GeoPlusLayerItem[];
@@ -50,17 +52,33 @@ type LayerPanelProps = {
     styleConfig: NonNullable<GeoPlusLayerItem["styleConfig"]>,
   ) => void;
   onSetLayerLabelConfig: (layerId: string, config: { enabled?: boolean; field?: string }) => void;
-  onSetLayerInteractionConfig: (layerId: string, config: { tooltipEnabled?: boolean; popupEnabled?: boolean }) => void;
+  onSetLayerInteractionConfig: (
+    layerId: string,
+    config: {
+      tooltipEnabled?: boolean;
+      popupEnabled?: boolean;
+      tooltipFields?: string[];
+      popupFields?: string[];
+      fieldDisplayNames?: Record<string, string>;
+      hoverHighlightEnabled?: boolean;
+      hoverHighlightColor?: string;
+      hoverLineColor?: string;
+      hoverFillOpacity?: number;
+      hoverLineWidth?: number;
+      hoverPointRadius?: number;
+    },
+  ) => void;
   onRenameLayer: (layerId: string, nextName: string) => void;
   onRemoveLayer: (layerId: string) => void;
   onReorderLayer: (draggedLayerId: string, targetLayerId: string, placement: "before" | "after") => void;
   onZoomToLayer: (layerId: string) => void;
+  onOpenLayerFilter: (layerId: string) => void;
   onOpenLayerTable: (layerId: string) => void;
   onOpenLayerChart: (layerId: string) => void;
 };
 
 const toolbarButtonClassName =
-  "inline-flex h-6 w-6 items-center justify-center rounded-md text-slate-300 transition hover:bg-slate-700/60 hover:text-emerald-200";
+  "inline-flex h-6 w-6 items-center justify-center rounded-md text-foreground/90 transition hover:bg-muted/80 hover:text-accent";
 
 const stylePresetLineClassName: Record<GeoPlusLayerStylePreset, string> = {
   emerald: "border-emerald-500",
@@ -250,30 +268,7 @@ const getLayerDataTypeLabel = (layer: GeoPlusLayerItem) => {
   return toSentenceCase(layer.layerType);
 };
 
-const getLayerLabelFieldOptions = (layer: GeoPlusLayerItem) => {
-  const fields = new Set<string>(layer.duckDbColumns ?? []);
-  const candidates = [layer.rawInlineData, layer.inlineData];
-  for (const candidate of candidates) {
-    if (!isGeoJsonFeatureCollection(candidate)) {
-      continue;
-    }
-    for (const feature of candidate.features.slice(0, 120)) {
-      const properties = feature?.properties;
-      if (!properties || typeof properties !== "object") {
-        continue;
-      }
-      for (const key of Object.keys(properties)) {
-        const trimmed = key.trim();
-        if (trimmed) {
-          fields.add(trimmed);
-        }
-      }
-    }
-  }
-  return [...fields].sort((left, right) => left.localeCompare(right));
-};
-
-const getLayerStyleFieldOptions = (layer: GeoPlusLayerItem) => getLayerLabelFieldOptions(layer);
+export const getLayerStyleFieldOptions = (layer: GeoPlusLayerItem) => getLayerLabelFieldOptions(layer);
 
 export function LayerPanel({
   layers,
@@ -288,13 +283,14 @@ export function LayerPanel({
   onRemoveLayer,
   onReorderLayer,
   onZoomToLayer,
+  onOpenLayerFilter,
   onOpenLayerTable,
   onOpenLayerChart,
 }: LayerPanelProps) {
   const { settings } = useAppSettings();
   const [moreMenuLayerId, setMoreMenuLayerId] = useState<string | null>(null);
   const [infoPopoverLayerId, setInfoPopoverLayerId] = useState<string | null>(null);
-  const [labelPopoverLayerId, setLabelPopoverLayerId] = useState<string | null>(null);
+  const [interactionDialogLayerId, setInteractionDialogLayerId] = useState<string | null>(null);
   const [styleLayerId, setStyleLayerId] = useState<string | null>(null);
   const [renameLayerId, setRenameLayerId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -305,9 +301,8 @@ export function LayerPanel({
   const moreMenuPopoverRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const infoPopoverTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const infoPopoverRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const labelPopoverTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const labelPopoverRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const renameTargetLayer = layers.find((layer) => layer.id === renameLayerId) ?? null;
+  const interactionTargetLayer = layers.find((layer) => layer.id === interactionDialogLayerId) ?? null;
   const styleTargetLayer = layers.find((layer) => layer.id === styleLayerId) ?? null;
   const styleTargetDefaults = styleTargetLayer
     ? stylePresetHexColors[styleTargetLayer.stylePreset] ?? stylePresetHexColors.emerald
@@ -397,31 +392,7 @@ export function LayerPanel({
     };
   }, [infoPopoverLayerId]);
 
-  useEffect(() => {
-    if (!labelPopoverLayerId) {
-      return;
-    }
 
-    const onDocumentPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (!target) {
-        return;
-      }
-
-      const activeTrigger = labelPopoverTriggerRefs.current[labelPopoverLayerId];
-      const activePopover = labelPopoverRefs.current[labelPopoverLayerId];
-      if (activeTrigger?.contains(target) || activePopover?.contains(target)) {
-        return;
-      }
-
-      setLabelPopoverLayerId(null);
-    };
-
-    document.addEventListener("pointerdown", onDocumentPointerDown);
-    return () => {
-      document.removeEventListener("pointerdown", onDocumentPointerDown);
-    };
-  }, [labelPopoverLayerId]);
 
   const resetDragState = () => {
     setDraggedLayerId(null);
@@ -474,16 +445,14 @@ export function LayerPanel({
         <div className="space-y-4">
           {layers.map((layer) => {
             const hasInsightsData = isGeoJsonFeatureCollection(layer.rawInlineData) || isGeoJsonFeatureCollection(layer.inlineData);
-            const labelFieldOptions = getLayerLabelFieldOptions(layer);
-            const hasLabelFieldOptions = labelFieldOptions.length > 0;
             const isLabelEnabled = Boolean(layer.labelEnabled && layer.labelField);
             const layerDisplayName = getLayerDisplayName(layer.name);
             return (
               <article
                 key={layer.id}
                 className={cn(
-                  "relative rounded-2xl border border-slate-700/65 bg-slate-900/87 p-3.5 text-slate-100 shadow-[0_8px_28px_rgba(15,23,42,0.3)]",
-                  dragOverLayerId === layer.id && "border-emerald-400/70 bg-emerald-400/10",
+                  "relative rounded-2xl border border-border/60 bg-card/90 p-3.5 text-foreground shadow-[0_8px_28px_rgba(15,23,42,0.3)]",
+                  dragOverLayerId === layer.id && "border-accent/70 bg-accent/10",
                 )}
                 onDragOver={layers.length > 1 ? (event) => onLayerDragOver(event, layer.id) : undefined}
                 onDrop={layers.length > 1 ? (event) => onLayerDrop(event, layer.id) : undefined}
@@ -513,21 +482,20 @@ export function LayerPanel({
                       <GripVertical className="size-4" />
                     </button>
                   ) : <div className="ml-1" />}
-                  <p className={cn("min-w-0 flex-1 truncate text-[0.95rem] font-semibold tracking-[-0.01em] text-slate-100", !layer.visible && "text-slate-400 line-through")}>
+                  <p className={cn("min-w-0 flex-1 truncate text-[0.95rem] font-semibold tracking-[-0.01em] text-foreground", !layer.visible && "text-muted-foreground line-through")}>
                     {layerDisplayName}
                   </p>
 
                   {layerToolSettings.showInfo ? (
                     <button
                       type="button"
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-200 transition hover:bg-slate-700/60 hover:text-emerald-200"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-foreground/80 transition hover:bg-muted/80 hover:text-accent"
                       ref={(element) => {
                         infoPopoverTriggerRefs.current[layer.id] = element;
                       }}
                       onClick={() => {
                         setInfoPopoverLayerId((current) => (current === layer.id ? null : layer.id));
                         setMoreMenuLayerId(null);
-                        setLabelPopoverLayerId(null);
                       }}
                       title="Layer info"
                       aria-label="Layer info"
@@ -539,7 +507,7 @@ export function LayerPanel({
                   {layerToolSettings.showRename ? (
                     <button
                       type="button"
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-200 transition hover:bg-slate-700/60 hover:text-emerald-200"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-foreground/80 transition hover:bg-muted/80 hover:text-accent"
                       onClick={() => {
                         setRenameLayerId(layer.id);
                         setRenameValue(layer.name ?? "");
@@ -553,7 +521,7 @@ export function LayerPanel({
 
                   <button
                     type="button"
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-200 transition hover:bg-rose-500/20 hover:text-rose-200"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-foreground/80 transition hover:bg-rose-500/20 hover:text-rose-200"
                     onClick={() => onRemoveLayer(layer.id)}
                     title="Remove layer"
                     aria-label="Remove layer"
@@ -570,7 +538,7 @@ export function LayerPanel({
                     title={layer.visible ? "Hide layer" : "Show layer"}
                     aria-label={layer.visible ? "Hide layer" : "Show layer"}
                   >
-                    {layer.visible ? <Eye className="size-4 text-sky-400" /> : <EyeOff className="size-4 text-slate-400" />}
+                    {layer.visible ? <Eye className="size-4 text-sky-400" /> : <EyeOff className="size-4 text-muted-foreground" />}
                   </button>
 
                   {layerToolSettings.showZoom ? (
@@ -585,7 +553,14 @@ export function LayerPanel({
                     </button>
                   ) : null}
 
-                  <button type="button" className={toolbarButtonClassName} title="Filter (coming soon)" aria-label="Filter (coming soon)" disabled>
+                  <button
+                    type="button"
+                    className={cn(toolbarButtonClassName, layer.duckDbWhereClause && "bg-accent/20 text-accent")}
+                    onClick={() => onOpenLayerFilter(layer.id)}
+                    title={hasInsightsData ? "Open layer filter" : "Filter is available for uploaded vector layers"}
+                    aria-label={hasInsightsData ? "Open layer filter" : "Filter is unavailable for this layer"}
+                    disabled={!hasInsightsData}
+                  >
                     <Filter className="size-4" />
                   </button>
 
@@ -619,31 +594,19 @@ export function LayerPanel({
                     </button>
                   ) : null}
 
-                  {layerToolSettings.showLabels ? (
-                    <button
-                      type="button"
-                      className={cn(toolbarButtonClassName, isLabelEnabled && "bg-emerald-500/20 text-emerald-200")}
-                      ref={(element) => {
-                        labelPopoverTriggerRefs.current[layer.id] = element;
-                      }}
-                      onClick={() => {
-                        setLabelPopoverLayerId((current) => (current === layer.id ? null : layer.id));
-                        setMoreMenuLayerId(null);
-                        setInfoPopoverLayerId(null);
-                      }}
-                      title={
-                        hasLabelFieldOptions
-                          ? isLabelEnabled
-                            ? "Configure labels (currently on)"
-                            : "Configure labels"
-                          : "No attributes available for labels"
-                      }
-                      aria-label="Configure labels"
-                      disabled={!hasLabelFieldOptions}
-                    >
-                      <Type className="size-4" />
-                    </button>
-                  ) : null}
+                  <button
+                    type="button"
+                    className={cn(toolbarButtonClassName, (isLabelEnabled || layer.interactionConfig?.tooltipEnabled !== false || layer.interactionConfig?.popupEnabled !== false) && "bg-accent/20 text-accent")}
+                    onClick={() => {
+                      setInteractionDialogLayerId(layer.id);
+                      setMoreMenuLayerId(null);
+                      setInfoPopoverLayerId(null);
+                    }}
+                    title="Configure labels & interactions"
+                    aria-label="Configure labels & interactions"
+                  >
+                    <MessageSquareText className="size-4" />
+                  </button>
 
                   {layerToolSettings.showStyle ? (
                     <button
@@ -653,7 +616,6 @@ export function LayerPanel({
                         setStyleLayerId(layer.id);
                         setMoreMenuLayerId(null);
                         setInfoPopoverLayerId(null);
-                        setLabelPopoverLayerId(null);
                       }}
                       title="Layer style"
                       aria-label="Layer style"
@@ -672,7 +634,6 @@ export function LayerPanel({
                       onClick={() => {
                         setMoreMenuLayerId((current) => (current === layer.id ? null : layer.id));
                         setInfoPopoverLayerId(null);
-                        setLabelPopoverLayerId(null);
                       }}
                       title="More actions"
                       aria-label="More actions"
@@ -687,7 +648,7 @@ export function LayerPanel({
                     ref={(element) => {
                       infoPopoverRefs.current[layer.id] = element;
                     }}
-                    className="absolute right-20 top-12 z-20 w-56 rounded-lg border border-slate-600/75 bg-slate-950/95 p-3 text-[0.7rem] text-slate-300 shadow-[0_14px_34px_rgba(15,23,42,0.45)]"
+                    className="absolute left-1/2 -translate-x-1/2 top-12 z-30 w-56 rounded-lg border border-border/80 bg-popover/95 p-3 text-[0.7rem] text-foreground/90 shadow-[0_14px_34px_rgba(15,23,42,0.45)]"
                   >
                     <p>Source: {toSentenceCase(layer.sourceMode)}</p>
                     <p>Data Type: {getLayerDataTypeLabel(layer)}</p>
@@ -695,68 +656,19 @@ export function LayerPanel({
                   </div>
                 ) : null}
 
-                {layerToolSettings.showLabels && labelPopoverLayerId === layer.id ? (
-                  <div
-                    ref={(element) => {
-                      labelPopoverRefs.current[layer.id] = element;
-                    }}
-                    className="absolute right-[8.6rem] top-[4.9rem] z-20 w-64 rounded-lg border border-slate-600/75 bg-slate-950/95 p-3 shadow-[0_14px_34px_rgba(15,23,42,0.45)]"
-                  >
-                    <p className="text-[0.66rem] font-semibold uppercase tracking-[0.11em] text-slate-300">Labels</p>
-                    {hasLabelFieldOptions ? (
-                      <>
-                        <label className="mt-2 block text-[0.64rem] font-semibold uppercase tracking-[0.1em] text-slate-400">Label Field</label>
-                        <select
-                          value={layer.labelField ?? ""}
-                          onChange={(event) => {
-                            const nextField = event.target.value.trim();
-                            onSetLayerLabelConfig(layer.id, {
-                              field: nextField,
-                              enabled: Boolean(nextField),
-                            });
-                          }}
-                          className="mt-1 h-8 w-full rounded-md border border-slate-600 bg-slate-900 px-2 text-xs text-slate-100"
-                        >
-                          <option value="">Select a property</option>
-                          {labelFieldOptions.map((fieldName) => (
-                            <option key={fieldName} value={fieldName}>
-                              {fieldName}
-                            </option>
-                          ))}
-                        </select>
 
-                        <label className="mt-2 flex items-center gap-2 text-xs text-slate-200">
-                          <input
-                            type="checkbox"
-                            className="h-3.5 w-3.5 accent-emerald-400"
-                            checked={isLabelEnabled}
-                            onChange={(event) =>
-                              onSetLayerLabelConfig(layer.id, {
-                                enabled: event.target.checked,
-                              })
-                            }
-                            disabled={!layer.labelField}
-                          />
-                          Show labels on map
-                        </label>
-                      </>
-                    ) : (
-                      <p className="mt-2 text-xs text-slate-400">No attributes found. Labels are available for vector layers with feature properties.</p>
-                    )}
-                  </div>
-                ) : null}
 
                 {layerToolSettings.showMore && moreMenuLayerId === layer.id ? (
                   <div
                     ref={(element) => {
                       moreMenuPopoverRefs.current[layer.id] = element;
                     }}
-                    className="absolute right-11 top-[4.9rem] z-20 w-56 rounded-lg border border-slate-600/75 bg-slate-950/95 p-3 shadow-[0_14px_34px_rgba(15,23,42,0.45)] space-y-3"
+                    className="absolute left-1/2 -translate-x-1/2 top-[4.9rem] z-30 w-56 rounded-lg border border-border/80 bg-popover/95 p-3 shadow-[0_14px_34px_rgba(15,23,42,0.45)] space-y-3"
                   >
                     <div>
-                      <p className="text-[0.66rem] font-semibold uppercase tracking-[0.11em] text-slate-300">Opacity</p>
+                      <p className="text-[0.66rem] font-semibold uppercase tracking-[0.11em] text-foreground/90">Opacity</p>
                       <div className="mt-2 flex items-center gap-2">
-                        <SlidersHorizontal className="size-3.5 text-slate-400" />
+                        <SlidersHorizontal className="size-3.5 text-muted-foreground" />
                         <input
                           type="range"
                           min={0}
@@ -767,31 +679,7 @@ export function LayerPanel({
                           }}
                           className="h-1.5 w-full accent-emerald-400"
                         />
-                        <span className="w-9 text-right text-xs font-medium text-slate-200">{Math.round(layer.opacity * 100)}%</span>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-slate-700/75 pt-2">
-                      <p className="text-[0.66rem] font-semibold uppercase tracking-[0.11em] text-slate-300">Interactions</p>
-                      <div className="mt-2 space-y-2">
-                        <label className="flex items-center gap-2 text-xs text-slate-200">
-                          <input
-                            type="checkbox"
-                            className="rounded border-slate-600 bg-slate-900 accent-emerald-500"
-                            checked={layer.interactionConfig?.tooltipEnabled !== false}
-                            onChange={(e) => onSetLayerInteractionConfig(layer.id, { tooltipEnabled: e.target.checked })}
-                          />
-                          Enable Tooltips
-                        </label>
-                        <label className="flex items-center gap-2 text-xs text-slate-200">
-                          <input
-                            type="checkbox"
-                            className="rounded border-slate-600 bg-slate-900 accent-emerald-500"
-                            checked={layer.interactionConfig?.popupEnabled !== false}
-                            onChange={(e) => onSetLayerInteractionConfig(layer.id, { popupEnabled: e.target.checked })}
-                          />
-                          Enable Popups
-                        </label>
+                        <span className="w-9 text-right text-xs font-medium text-foreground/80">{Math.round(layer.opacity * 100)}%</span>
                       </div>
                     </div>
                   </div>
@@ -800,6 +688,17 @@ export function LayerPanel({
             );
           })}
         </div>
+      )}
+
+      {interactionTargetLayer && (
+        <LayerInteractionDialog
+          layer={interactionTargetLayer}
+          isOpen={interactionDialogLayerId !== null}
+          onClose={() => setInteractionDialogLayerId(null)}
+          onUpdateLabelConfig={onSetLayerLabelConfig}
+          onUpdateInteractionConfig={onSetLayerInteractionConfig}
+          onUpdateStyleConfig={(layerId, partialConfig) => onSetLayerStyleConfig(layerId, partialConfig as GeoPlusLayerStyleConfig)}
+        />
       )}
 
       <Dialog

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Send, LoaderCircle, AlertTriangle } from "lucide-react";
+import { Send, LoaderCircle, AlertTriangle, Eraser } from "lucide-react";
 import type * as duckdb from "@duckdb/duckdb-wasm";
 import { Input } from "@/components/ui/input";
 
@@ -23,10 +23,20 @@ type HistoryEntry = {
   columns?: string[];
 };
 
-export function DuckDbShell({ layer }: { layer: GeoPlusLayerItem | null; layers: GeoPlusLayerItem[] }) {
-  const [history, setHistory] = useState<HistoryEntry[]>([
-    { id: "1", type: "info", content: "DuckDB Shell ready. Enter SQL queries to interact with your data." },
-  ]);
+const INITIAL_HISTORY: HistoryEntry[] = [
+  { id: "1", type: "info", content: "DuckDB Shell ready. Enter SQL queries to interact with your data." },
+  { id: "2", type: "info", content: "Note: The shell provides an isolated sandbox for exploratory queries. If you run a simple SELECT query with a WHERE clause against the active layer, it will also filter the visual map." },
+];
+
+export function DuckDbShell({ 
+  layer, 
+  onApplyFilter 
+}: { 
+  layer: GeoPlusLayerItem | null; 
+  onApplyFilter?: (layerId: string, whereClause: string) => void;
+}) {
+  const [history, setHistory] = useState<HistoryEntry[]>(INITIAL_HISTORY);
+
   const [query, setQuery] = useState("");
   const [isReady, setIsReady] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -170,12 +180,28 @@ export function DuckDbShell({ layer }: { layer: GeoPlusLayerItem | null; layers:
         columns = Object.keys(rows[0]);
       }
 
+      let syncMessage = "";
+      if (layer && onApplyFilter) {
+        // Attempt to extract WHERE clause for simple SELECTs
+        // Regex looks for: SELECT ... FROM alias WHERE ... (ignoring case)
+        const selectRegex = new RegExp(`^select\\s+.*\\s+from\\s+(?:"${activeAlias}"|${activeAlias})\\s+where\\s+(.+)$`, "i");
+        const match = q.match(selectRegex);
+        if (match && match[1]) {
+          // Remove potential ORDER BY, LIMIT, GROUP BY from the extracted where clause
+          const whereClause = match[1].replace(/\s+(order by|limit|group by|having)\s+.*$/i, "").trim();
+          if (whereClause) {
+            onApplyFilter(layer.id, whereClause);
+            syncMessage = ` (Map filter updated: ${whereClause})`;
+          }
+        }
+      }
+
       setHistory((prev) => [
         ...prev,
         { 
           id: Date.now().toString(), 
           type: "success", 
-          content: `Query returned ${rows.length} rows.`, 
+          content: `Query returned ${rows.length} rows.${syncMessage}`, 
           data: rows.slice(0, 100), // Cap at 100 rows for shell preview
           columns 
         },
@@ -220,7 +246,7 @@ export function DuckDbShell({ layer }: { layer: GeoPlusLayerItem | null; layers:
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="text-emerald-500/80">{entry.content} {entry.data && entry.data.length > 0 ? "(Previewing up to 100)" : ""}</div>
+                <div className="text-accent/80">{entry.content} {entry.data && entry.data.length > 0 ? "(Previewing up to 100)" : ""}</div>
                 {entry.columns && entry.columns.length > 0 && entry.data && entry.data.length > 0 && (
                   <div className="overflow-x-auto max-w-full rounded border border-border/50">
                     <table className="w-full text-left border-collapse">
@@ -267,7 +293,17 @@ export function DuckDbShell({ layer }: { layer: GeoPlusLayerItem | null; layers:
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between text-[0.65rem] text-muted-foreground">
               <span>Active alias: <span className="font-semibold text-accent">{activeAlias}</span></span>
-              <span>Try: <code className="bg-muted/50 px-1 py-0.5 rounded">SELECT * FROM {activeAlias} LIMIT 5</code></span>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setHistory(INITIAL_HISTORY)}
+                  className="flex items-center gap-1 hover:text-foreground transition-colors"
+                  title="Clear Terminal"
+                  aria-label="Clear Terminal"
+                >
+                  <Eraser className="size-3" /> Clear
+                </button>
+                <span>Try: <code className="bg-muted/50 px-1 py-0.5 rounded">SELECT * FROM {activeAlias} LIMIT 5</code></span>
+              </div>
             </div>
             <div className="relative flex items-center">
               <span className="absolute left-3 text-accent font-bold">❯</span>

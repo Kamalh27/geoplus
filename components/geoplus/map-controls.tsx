@@ -1,6 +1,6 @@
 "use client";
 
-import { BookMarked, Box, Compass, Globe, Loader2, LocateFixed, Map, Maximize2, Minimize2, Minus, Plus, Search } from "lucide-react";
+import { BookMarked, Box, Compass, Globe, Loader2, LocateFixed, Map, Maximize2, Minimize2, Minus, Plus, Search, FilterX } from "lucide-react";
 import type { AppSettings } from "@/components/geoplus/use-app-settings";
 
 const CONTROL_BUTTON_CLASS =
@@ -27,6 +27,7 @@ type MapControlsProps = {
   onResetNavigation: () => void;
   onGoToCurrentLocation: () => void;
   onToggleFullscreen: () => void;
+  onClearFilters?: () => void;
   settings?: AppSettings;
 };
 
@@ -47,24 +48,40 @@ export function MapControls({
   onResetNavigation,
   onGoToCurrentLocation,
   onToggleFullscreen,
+  onClearFilters,
   settings,
 }: MapControlsProps) {
   return (
-    <div id="geoplus-map-controls" className="pointer-events-auto absolute right-3 top-3 flex flex-col gap-2">
-      {settings?.showSearchControl !== false && (
-        <button
-          type="button"
-          id="geoplus-map-search-btn"
-          aria-label={isSearchPanelOpen ? "Hide search panel" : "Show search panel"}
-          title={isSearchPanelOpen ? "Hide search panel" : "Show search panel"}
-          className={`${CONTROL_BUTTON_CLASS} ${isSearchPanelOpen ? "bg-accent/20 text-accent" : ""}`}
-          onClick={onToggleSearchPanel}
-        >
-          <Search className="size-4" />
-        </button>
+    <>
+      {onClearFilters && (
+        <div className="pointer-events-auto absolute right-16 top-3">
+          <button
+            type="button"
+            id="geoplus-map-clear-filters-btn"
+            aria-label="Clear all layer filters"
+            title="Clear all layer filters"
+            className={CONTROL_BUTTON_CLASS}
+            onClick={onClearFilters}
+          >
+            <FilterX className="size-4 text-rose-400" />
+          </button>
+        </div>
       )}
+      <div id="geoplus-map-controls" className="pointer-events-auto absolute right-3 top-3 flex flex-col gap-2">
+        {settings?.showSearchControl !== false && (
+          <button
+            type="button"
+            id="geoplus-map-search-btn"
+            aria-label={isSearchPanelOpen ? "Hide search panel" : "Show search panel"}
+            title={isSearchPanelOpen ? "Hide search panel" : "Show search panel"}
+            className={`${CONTROL_BUTTON_CLASS} ${isSearchPanelOpen ? "bg-accent/20 text-accent" : ""}`}
+            onClick={onToggleSearchPanel}
+          >
+            <Search className="size-4" />
+          </button>
+        )}
 
-      {settings?.showZoomControl !== false && (
+        {settings?.showZoomControl !== false && (
         <div id="geoplus-map-zoom-controls" className={CONTROL_GROUP_CLASS} role="group" aria-label="Zoom controls">
           <button type="button" aria-label="Zoom in" title="Zoom in" className={CONTROL_GROUP_BUTTON_CLASS} onClick={onZoomIn}>
             <Plus className="size-4" />
@@ -150,5 +167,6 @@ export function MapControls({
         </button>
       )}
     </div>
+    </>
   );
 }

@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 type SpatialToolsPanelProps = {
   layers: GeoPlusLayerItem[];
   selectedLayerId?: string;
+  initialToolId?: string;
   onApplyFilter: (layerId: string, whereClause: string, chartLabelColumn?: string) => Promise<void> | void;
   onRunSpatialAnalysis: (args: {
     sourceLayerId: string;
@@ -120,20 +121,17 @@ const availableTools: ToolDef[] = [
 export function SpatialToolsPanel({
   layers,
   selectedLayerId,
+  initialToolId,
   onApplyFilter,
   onRunSpatialAnalysis,
   onSelectedLayerChange,
   onOpenShell,
 }: SpatialToolsPanelProps) {
-  const [selectedTool, setSelectedTool] = useState<ToolDef | null>(null);
+  const [selectedTool, setSelectedTool] = useState<ToolDef | null>(() => availableTools.find((tool) => tool.id === initialToolId) ?? null);
   const [searchQuery, setSearchQuery] = useState("");
 
   // Suppress unused warnings since we are maintaining the interface
-  void layers;
-  void selectedLayerId;
-  void onApplyFilter;
   void onRunSpatialAnalysis;
-  void onSelectedLayerChange;
 
   const filteredTools = useMemo(() => {
     if (!searchQuery.trim()) return availableTools;
@@ -156,6 +154,9 @@ export function SpatialToolsPanel({
     }
     return groups;
   }, [filteredTools]);
+
+  const selectedLayer = layers.find((layer) => layer.id === selectedLayerId);
+  const selectedLayerWhereClause = selectedLayer?.duckDbWhereClause ?? "";
 
   return (
     <div className="flex h-full flex-col">
@@ -225,7 +226,7 @@ export function SpatialToolsPanel({
                     }}
                     className="flex items-start gap-3 rounded-lg border border-border/50 bg-card/40 p-3 text-left transition hover:border-accent/40 hover:bg-accent/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
-                    <div className="rounded-md bg-background/80 p-2 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                    <div className="rounded-md bg-background/80 p-2 text-accent shadow-sm ring-1 ring-border/50">
                       <tool.icon className="size-4" />
                     </div>
                     <div className="flex-1">
@@ -279,8 +280,9 @@ export function SpatialToolsPanel({
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-foreground uppercase tracking-wider">SQL WHERE Clause</label>
                 <Input
+                  key={`${selectedLayerId ?? "no-layer"}-${selectedLayerWhereClause}`}
                   id="filter-where"
-                  defaultValue={layers.find(l => l.id === selectedLayerId)?.duckDbWhereClause ?? ""}
+                  defaultValue={selectedLayerWhereClause}
                   placeholder="e.g. status = 'active' AND value > 100"
                   className="font-mono text-xs"
                 />
@@ -293,9 +295,21 @@ export function SpatialToolsPanel({
                 <Button variant="outline" onClick={() => setSelectedTool(null)}>
                   Cancel
                 </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (selectedLayerId) {
+                      void onApplyFilter(selectedLayerId, "");
+                      setSelectedTool(null);
+                    }
+                  }}
+                  disabled={!selectedLayerId || !selectedLayerWhereClause}
+                >
+                  Clear Filter
+                </Button>
                 <Button 
                   onClick={() => {
-                    const clause = (document.getElementById("filter-where") as HTMLInputElement)?.value || "";
+                    const clause = (document.getElementById("filter-where") as HTMLInputElement | null)?.value || "";
                     if (selectedLayerId) {
                       void onApplyFilter(selectedLayerId, clause);
                       setSelectedTool(null);
@@ -309,8 +323,8 @@ export function SpatialToolsPanel({
             </div>
           ) : (
             <div className="py-8 text-center space-y-4">
-              <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-                <Hammer className="size-8 text-slate-400 dark:text-slate-500" />
+              <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                <Hammer className="size-8 text-muted-foreground" />
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-foreground">Coming Soon</h3>

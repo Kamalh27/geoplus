@@ -8,7 +8,7 @@ import { searchNominatimLocations } from "@/components/geoplus/map-search-servic
 import { detectDarkMode, getBasemapStyle, type GeoPlusBasemapId } from "@/components/geoplus/map-style";
 import type { GeoPlusLayerItem, NominatimSearchResult } from "@/components/geoplus/types";
 import type { AppSettings } from "@/components/geoplus/use-app-settings";
-import { buildDeckUserLayers, getDeckLayerTooltip, getGeoJsonLngLatBounds, getLayerLngLatBounds, syncMapLibreUserLayers, MAPLIBRE_LAYER_PREFIX } from "@/lib/geoplus/map-layer-renderers";
+import { buildDeckUserLayers, getGeoJsonLngLatBounds, getLayerLngLatBounds, syncMapLibreUserLayers, MAPLIBRE_LAYER_PREFIX } from "@/lib/geoplus/map-layer-renderers";
 import { humanizeColumnName } from "@/lib/geoplus/duckdb-spatial-analytics";
 import { registerCogProtocol, unregisterCogProtocol } from "@/lib/geoplus/tilesets/cog-maplibre";
 import { registerPmtilesProtocol, unregisterPmtilesProtocol } from "@/lib/geoplus/tilesets/pmtiles-maplibre";
@@ -23,6 +23,299 @@ const GLOBE_VIEW_BOUNDS: maplibregl.LngLatBoundsLike = [
   [170, 82],
 ];
 type MapProjectionMode = "flat" | "globe";
+const HOVER_HIGHLIGHT_SOURCE_ID = "geoplus-hover-highlight-source";
+const HOVER_HIGHLIGHT_FILL_LAYER_ID = "geoplus-hover-highlight-fill";
+const HOVER_HIGHLIGHT_LINE_LAYER_ID = "geoplus-hover-highlight-line";
+const HOVER_HIGHLIGHT_POINT_LAYER_ID = "geoplus-hover-highlight-point";
+const DEFAULT_HOVER_HIGHLIGHT_COLOR = "#22d3ee";
+const EMPTY_HOVER_FEATURE_COLLECTION: GeoJSON.FeatureCollection = {
+  type: "FeatureCollection",
+  features: [],
+};
+const DEFAULT_HOVER_LINE_WIDTH = 3;
+const DEFAULT_HOVER_FILL_OPACITY = 0.22;
+const DEFAULT_HOVER_POINT_RADIUS = 8;
+
+type HoverHighlightStyle = {
+  color: string;
+  lineColor: string;
+  fillOpacity: number;
+  lineWidth: number;
+  pointRadius: number;
+};
+
+const escapeHtml = (value: unknown) =>
+  String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
+const resolveFieldLabel = (layer: GeoPlusLayerItem | undefined, field: string) =>
+  layer?.interactionConfig?.fieldDisplayNames?.[field]?.trim() || humanizeColumnName(field);
+
+const buildTooltipHtml = (layer: GeoPlusLayerItem | undefined, properties: Record<string, unknown>) => {
+  const tooltipFields = layer?.interactionConfig?.tooltipFields;
+  if (tooltipFields && tooltipFields.length > 0) {
+    return tooltipFields
+      .map((field) => `<b>${escapeHtml(resolveFieldLabel(layer, field))}:</b> ${escapeHtml(properties[field] ?? "N/A")}`)
+      .join("<br>");
+  }
+
+  const fallbackFields = Object.keys(properties)
+    .filter((field) => field !== "layer" && field !== "source")
+    .filter((field) => {
+      const value = properties[field];
+      return value !== null && value !== undefined && typeof value !== "object";
+    });
+
+  if (fallbackFields.length > 0) {
+    return fallbackFields
+      .map((field) => `<b>${escapeHtml(resolveFieldLabel(layer, field))}:</b> ${escapeHtml(properties[field] ?? "N/A")}`)
+      .join("<br>");
+  }
+
+  const title = properties.name ?? properties.title ?? properties.id ?? "Feature Details";
+  return `<b>${escapeHtml(title)}</b>`;
+};
+
+const buildPopupHtml = (layer: GeoPlusLayerItem | undefined, properties: Record<string, unknown>) => {
+  const popupFields = layer?.interactionConfig?.popupFields;
+  const fields =
+    popupFields && popupFields.length > 0
+      ? popupFields
+      : Object.keys(properties).filter((field) => field !== "layer" && field !== "source");
+  const rows = fields
+    .map((field) => {
+      const value = properties[field];
+      if (value === null || value === undefined || typeof value === "object") {
+        return null;
+      }
+      return `<tr><td style="padding-right:12px; font-weight:600; vertical-align:top;">${escapeHtml(resolveFieldLabel(layer, field))}</td><td>${escapeHtml(value)}</td></tr>`;
+    })
+    .filter(Boolean)
+    .join("");
+
+  const bodyHtml =
+    rows.length > 0
+      ? `<div style="max-height: 220px; overflow-y: auto; padding: 6px 8px 8px;"><table style="font-size: 11px; width: 100%; border-collapse: separate; border-spacing: 0 3px;"><tbody>${rows}</tbody></table></div>`
+      : `<div style="max-height: 220px; overflow-y: auto; padding: 6px 8px 8px; font-size: 11px;">No attributes available for this feature.</div>`;
+
+  const title = "Information";
+  const infoIcon = `
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="display:block;">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"></circle>
+      <path d="M12 10v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+      <circle cx="12" cy="7" r="1.2" fill="currentColor"></circle>
+    </svg>
+  `;
+
+  return `
+    <section style="min-width: 220px; max-width: 360px;">
+      <header style="display:flex; align-items:center; justify-content:space-between; gap:8px; border-bottom:1px solid rgba(148,163,184,0.25); padding:5px 8px;">
+        <div style="display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; letter-spacing:0.02em;">
+          <span style="display:inline-flex; align-items:center; color:inherit;">${infoIcon}</span>
+          <span>${title}</span>
+        </div>
+        <button
+          type="button"
+          aria-label="Close information popup"
+          onclick="this.closest('.maplibregl-popup')?.remove()"
+          style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border:0; border-radius:4px; background:transparent; color:inherit; font-size:14px; line-height:1; cursor:pointer;"
+        >
+          ×
+        </button>
+      </header>
+      ${bodyHtml}
+    </section>
+  `;
+};
+
+const isFeatureCollection = (value: unknown): value is GeoJSON.FeatureCollection =>
+  Boolean(value) && typeof value === "object" && (value as { type?: string }).type === "FeatureCollection";
+
+const ensureHoverHighlightLayers = (map: maplibregl.Map) => {
+  if (!map.getSource(HOVER_HIGHLIGHT_SOURCE_ID)) {
+    map.addSource(HOVER_HIGHLIGHT_SOURCE_ID, {
+      type: "geojson",
+      data: EMPTY_HOVER_FEATURE_COLLECTION,
+    });
+  }
+
+  if (!map.getLayer(HOVER_HIGHLIGHT_FILL_LAYER_ID)) {
+    map.addLayer({
+      id: HOVER_HIGHLIGHT_FILL_LAYER_ID,
+      type: "fill",
+      source: HOVER_HIGHLIGHT_SOURCE_ID,
+      paint: {
+        "fill-color": ["coalesce", ["get", "__highlightColor"], DEFAULT_HOVER_HIGHLIGHT_COLOR] as unknown as string,
+        "fill-opacity": ["coalesce", ["get", "__highlightFillOpacity"], DEFAULT_HOVER_FILL_OPACITY] as unknown as number,
+      },
+    });
+  }
+
+  if (!map.getLayer(HOVER_HIGHLIGHT_LINE_LAYER_ID)) {
+    map.addLayer({
+      id: HOVER_HIGHLIGHT_LINE_LAYER_ID,
+      type: "line",
+      source: HOVER_HIGHLIGHT_SOURCE_ID,
+      paint: {
+        "line-color": ["coalesce", ["get", "__highlightLineColor"], ["get", "__highlightColor"], DEFAULT_HOVER_HIGHLIGHT_COLOR] as unknown as string,
+        "line-width": ["coalesce", ["get", "__highlightLineWidth"], DEFAULT_HOVER_LINE_WIDTH] as unknown as number,
+        "line-opacity": 0.95,
+      },
+    });
+  }
+
+  if (!map.getLayer(HOVER_HIGHLIGHT_POINT_LAYER_ID)) {
+    map.addLayer({
+      id: HOVER_HIGHLIGHT_POINT_LAYER_ID,
+      type: "circle",
+      source: HOVER_HIGHLIGHT_SOURCE_ID,
+      filter: ["==", ["geometry-type"], "Point"],
+      paint: {
+        "circle-color": ["coalesce", ["get", "__highlightColor"], DEFAULT_HOVER_HIGHLIGHT_COLOR] as unknown as string,
+        "circle-radius": ["coalesce", ["get", "__highlightPointRadius"], DEFAULT_HOVER_POINT_RADIUS] as unknown as number,
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 2,
+        "circle-opacity": 0.92,
+      },
+    });
+  }
+};
+
+const setHoverHighlightFeature = (map: maplibregl.Map, feature: GeoJSON.Feature, style: HoverHighlightStyle) => {
+  ensureHoverHighlightLayers(map);
+  const source = map.getSource(HOVER_HIGHLIGHT_SOURCE_ID);
+  if (!source || !("setData" in source)) {
+    return;
+  }
+
+  const featureWithColor: GeoJSON.Feature = {
+    ...feature,
+    properties: {
+      ...(feature.properties ?? {}),
+      __highlightColor: style.color,
+      __highlightLineColor: style.lineColor,
+      __highlightLineWidth: style.lineWidth,
+      __highlightFillOpacity: style.fillOpacity,
+      __highlightPointRadius: style.pointRadius,
+    },
+  };
+  (source as maplibregl.GeoJSONSource).setData({
+    type: "FeatureCollection",
+    features: [featureWithColor],
+  });
+};
+
+const clearHoverHighlightFeature = (map: maplibregl.Map) => {
+  const source = map.getSource(HOVER_HIGHLIGHT_SOURCE_ID);
+  if (!source || !("setData" in source)) {
+    return;
+  }
+  (source as maplibregl.GeoJSONSource).setData(EMPTY_HOVER_FEATURE_COLLECTION);
+};
+
+const mapFeatureToGeoJsonFeature = (feature: maplibregl.MapGeoJSONFeature): GeoJSON.Feature | null => {
+  if (!feature.geometry) {
+    return null;
+  }
+  return {
+    type: "Feature",
+    geometry: feature.geometry as GeoJSON.Geometry,
+    properties: feature.properties ?? {},
+  };
+};
+
+const deckObjectToGeoJsonFeature = (object: Record<string, unknown>): GeoJSON.Feature | null => {
+  if (isFeatureCollection(object)) {
+    return object.features[0] ?? null;
+  }
+
+  const maybeFeature = object as {
+    type?: string;
+    geometry?: GeoJSON.Geometry;
+    properties?: Record<string, unknown>;
+    position?: [number, number];
+  };
+
+  if (maybeFeature.type === "Feature" && maybeFeature.geometry) {
+    return {
+      type: "Feature",
+      geometry: maybeFeature.geometry,
+      properties: maybeFeature.properties ?? {},
+    };
+  }
+
+  if (Array.isArray(maybeFeature.position) && maybeFeature.position.length >= 2) {
+    const longitude = Number(maybeFeature.position[0]);
+    const latitude = Number(maybeFeature.position[1]);
+    if (Number.isFinite(longitude) && Number.isFinite(latitude)) {
+      return {
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: [longitude, latitude],
+        },
+        properties: maybeFeature.properties ?? object,
+      };
+    }
+  }
+
+  return null;
+};
+
+const getDeckClickLngLat = (map: maplibregl.Map, info: Record<string, unknown>, object: Record<string, unknown>): [number, number] | null => {
+  const coordinate = info.coordinate as [number, number] | undefined;
+  if (Array.isArray(coordinate) && Number.isFinite(coordinate[0]) && Number.isFinite(coordinate[1])) {
+    return coordinate;
+  }
+
+  const x = Number(info.x);
+  const y = Number(info.y);
+  if (Number.isFinite(x) && Number.isFinite(y)) {
+    const lngLat = map.unproject([x, y]);
+    return [lngLat.lng, lngLat.lat];
+  }
+
+  const fallbackFeature = deckObjectToGeoJsonFeature(object);
+  if (fallbackFeature?.geometry?.type === "Point" && Array.isArray(fallbackFeature.geometry.coordinates)) {
+    const [lng, lat] = fallbackFeature.geometry.coordinates;
+    if (Number.isFinite(lng) && Number.isFinite(lat)) {
+      return [lng, lat];
+    }
+  }
+
+  return null;
+};
+
+const supportsFeatureInteractions = (layer: GeoPlusLayerItem | undefined) => {
+  if (!layer) {
+    return false;
+  }
+  return layer.layerType === "geojson" || layer.layerType === "scatterplot" || layer.layerType === "mvt";
+};
+
+const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+const buildHoverHighlightStyle = (layer: GeoPlusLayerItem | undefined, geometryType: GeoJSON.Geometry["type"]): HoverHighlightStyle => {
+  const isPointGeometry = geometryType === "Point" || geometryType === "MultiPoint";
+  const isLineGeometry = geometryType === "LineString" || geometryType === "MultiLineString";
+  const isPolygonGeometry = geometryType === "Polygon" || geometryType === "MultiPolygon";
+
+  const defaultFillOpacity = isPolygonGeometry ? 0.26 : 0;
+  const defaultLineWidth = isPolygonGeometry ? 3.4 : isLineGeometry ? 4.2 : 2.4;
+  const defaultPointRadius = isPointGeometry ? 9.2 : 0;
+
+  return {
+    color: layer?.interactionConfig?.hoverHighlightColor ?? DEFAULT_HOVER_HIGHLIGHT_COLOR,
+    lineColor: layer?.interactionConfig?.hoverLineColor ?? layer?.interactionConfig?.hoverHighlightColor ?? DEFAULT_HOVER_HIGHLIGHT_COLOR,
+    fillOpacity: clampNumber(layer?.interactionConfig?.hoverFillOpacity ?? defaultFillOpacity, 0, 0.8),
+    lineWidth: clampNumber(layer?.interactionConfig?.hoverLineWidth ?? defaultLineWidth, 1, 8),
+    pointRadius: clampNumber(layer?.interactionConfig?.hoverPointRadius ?? defaultPointRadius, 0, 20),
+  };
+};
 
 export function useGeoPlusMap(
   selectedBasemapId: GeoPlusBasemapId,
@@ -44,6 +337,7 @@ export function useGeoPlusMap(
   const tooltipPopupRef = useRef<maplibregl.Popup | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
   const currentThemeRef = useRef<"dark" | "light" | null>(null);
+  const deckHoverActiveRef = useRef(false);
   const selectedBasemapRef = useRef<GeoPlusBasemapId>(selectedBasemapId);
   const projectionModeRef = useRef<MapProjectionMode>(defaultProjectionMode);
   const userLayersRef = useRef<GeoPlusLayerItem[]>(userLayers);
@@ -172,10 +466,83 @@ export function useGeoPlusMap(
 
     overlay.setProps({
       layers: userDeckLayers,
-      getTooltip: (info: Record<string, unknown>) => 
-        settings?.showLayerTooltips !== false ? getDeckLayerTooltip(info, currentLayers) : null,
+      onHover: (info: Record<string, unknown>) => {
+        if (settings?.showLayerTooltips === false) {
+          deckHoverActiveRef.current = false;
+          if (tooltipPopupRef.current) tooltipPopupRef.current.remove();
+          clearHoverHighlightFeature(map);
+          map.getCanvas().style.cursor = "";
+          return;
+        }
+        
+        if (!info.object || !info.layer) {
+          deckHoverActiveRef.current = false;
+          if (tooltipPopupRef.current) tooltipPopupRef.current.remove();
+          clearHoverHighlightFeature(map);
+          map.getCanvas().style.cursor = "";
+          return;
+        }
+
+        const layerInfo = info.layer as { id: string };
+        const rawId = layerInfo.id.replace(/^user-/, "");
+        const appLayer = currentLayers.find((l) => {
+          const safeId = l.id.replace(/[^a-zA-Z0-9_-]/g, "-");
+          return rawId === safeId || rawId.startsWith(`${safeId}-`);
+        });
+
+        if (appLayer && supportsFeatureInteractions(appLayer) && appLayer.interactionConfig?.tooltipEnabled !== false) {
+           deckHoverActiveRef.current = true;
+           map.getCanvas().style.cursor = "pointer";
+           const obj = info.object as Record<string, unknown>;
+           const properties = (obj.properties as Record<string, unknown>) || obj;
+           const html = buildTooltipHtml(appLayer, properties);
+           const hoverFeature = deckObjectToGeoJsonFeature(obj);
+           if (appLayer.interactionConfig?.hoverHighlightEnabled !== false && hoverFeature) {
+             const hoverStyle = buildHoverHighlightStyle(appLayer, hoverFeature.geometry.type);
+             setHoverHighlightFeature(map, hoverFeature, hoverStyle);
+           } else {
+             clearHoverHighlightFeature(map);
+           }
+
+           const coord = getDeckClickLngLat(map, info, obj);
+           if (html && coord) {
+             if (!tooltipPopupRef.current) {
+                tooltipPopupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "geoplus-tooltip" });
+             }
+             tooltipPopupRef.current.setLngLat([coord[0], coord[1]]).setHTML(html).addTo(map);
+           }
+        } else {
+           deckHoverActiveRef.current = false;
+           if (tooltipPopupRef.current) tooltipPopupRef.current.remove();
+           clearHoverHighlightFeature(map);
+           map.getCanvas().style.cursor = "";
+        }
+      },
+      onClick: (info: Record<string, unknown>) => {
+        if (!info.object || !info.layer || settings?.showLayerPopups === false) return;
+        
+        const layerInfo = info.layer as { id: string };
+        const rawId = layerInfo.id.replace(/^user-/, "");
+        const appLayer = currentLayers.find((l) => {
+          const safeId = l.id.replace(/[^a-zA-Z0-9_-]/g, "-");
+          return rawId === safeId || rawId.startsWith(`${safeId}-`);
+        });
+
+        if (appLayer && supportsFeatureInteractions(appLayer) && appLayer.interactionConfig?.popupEnabled !== false) {
+           const obj = info.object as Record<string, unknown>;
+           const properties = (obj.properties as Record<string, unknown>) || obj;
+           const html = buildPopupHtml(appLayer, properties);
+
+           const coord = getDeckClickLngLat(map, info, obj);
+           if (html && coord) {
+             popupRef.current?.remove();
+             popupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "geoplus-popup" });
+             popupRef.current.setLngLat([coord[0], coord[1]]).setHTML(html).addTo(map);
+           }
+        }
+      },
     });
-  }, [settings?.showLayerTooltips]);
+  }, [settings?.showLayerTooltips, settings?.showLayerPopups]);
 
 
   useEffect(() => {
@@ -285,36 +652,6 @@ export function useGeoPlusMap(
     const map = mapRef.current;
     if (!map) return;
 
-    const buildTooltipHtml = (properties: Record<string, unknown>, layerConfig?: GeoPlusLayerItem) => {
-      const tooltipFields = layerConfig?.interactionConfig?.tooltipFields;
-      if (tooltipFields && tooltipFields.length > 0) {
-        return tooltipFields.map(field => `<b>${humanizeColumnName(field)}:</b> ${String(properties[field] ?? "N/A")}`).join("<br>");
-      }
-
-      if (typeof properties.magnitude === "number" && typeof properties.category === "string") {
-        return `<b>${properties.category.toUpperCase()}</b><br>Magnitude: ${properties.magnitude.toFixed(1)}`;
-      }
-
-      const title = properties.name ?? properties.title;
-      if (typeof title === "string" && title.length > 0) {
-        return `<b>${title}</b>`;
-      }
-      return null;
-    };
-
-    const buildPopupHtml = (properties: Record<string, unknown>, layerConfig?: GeoPlusLayerItem) => {
-      const popupFields = layerConfig?.interactionConfig?.popupFields;
-      const fields = popupFields && popupFields.length > 0 ? popupFields : Object.keys(properties).filter(k => k !== "layer" && k !== "source");
-      
-      const rows = fields.map(field => {
-        const val = properties[field];
-        if (val === null || typeof val === "object") return null;
-        return `<tr><td style="padding-right:12px; font-weight:600; vertical-align:top;">${humanizeColumnName(field)}</td><td>${String(val)}</td></tr>`;
-      }).filter(Boolean).join("");
-
-      return rows.length > 0 ? `<div style="max-height: 200px; overflow-y: auto;"><table style="font-size: 11px;"><tbody>${rows}</tbody></table></div>` : null;
-    };
-
     const findAppLayer = (maplibreLayerId: string) => {
       const layerId = maplibreLayerId.replace(new RegExp(`^${MAPLIBRE_LAYER_PREFIX}(src-)?(.*?)(-fill|-line|-point|-marker|-label|-raster)?$`), "$2");
       return userLayersRef.current.find(l => l.id.replace(/[^a-zA-Z0-9_-]/g, "-") === layerId);
@@ -322,8 +659,14 @@ export function useGeoPlusMap(
 
     const handleMouseMove = (e: maplibregl.MapMouseEvent) => {
       if (settings?.showLayerTooltips === false) {
+        deckHoverActiveRef.current = false;
         if (tooltipPopupRef.current) tooltipPopupRef.current.remove();
+        clearHoverHighlightFeature(map);
         map.getCanvas().style.cursor = "";
+        return;
+      }
+
+      if (deckHoverActiveRef.current) {
         return;
       }
 
@@ -334,8 +677,19 @@ export function useGeoPlusMap(
         const feature = features[0];
         const appLayer = findAppLayer(feature.layer.id);
         
-        if (appLayer?.interactionConfig?.tooltipEnabled !== false) {
-          const html = buildTooltipHtml(feature.properties, appLayer);
+        if (supportsFeatureInteractions(appLayer) && appLayer?.interactionConfig?.tooltipEnabled !== false) {
+          const html = buildTooltipHtml(appLayer, feature.properties);
+          if (appLayer?.interactionConfig?.hoverHighlightEnabled !== false) {
+            const hoverFeature = mapFeatureToGeoJsonFeature(feature);
+            if (hoverFeature) {
+              const hoverStyle = buildHoverHighlightStyle(appLayer, hoverFeature.geometry.type);
+              setHoverHighlightFeature(map, hoverFeature, hoverStyle);
+            } else {
+              clearHoverHighlightFeature(map);
+            }
+          } else {
+            clearHoverHighlightFeature(map);
+          }
           if (html) {
             if (!tooltipPopupRef.current) {
               tooltipPopupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "geoplus-tooltip" });
@@ -348,6 +702,7 @@ export function useGeoPlusMap(
         map.getCanvas().style.cursor = "";
       }
       if (tooltipPopupRef.current) tooltipPopupRef.current.remove();
+      clearHoverHighlightFeature(map);
     };
 
     const handleClick = (e: maplibregl.MapMouseEvent) => {
@@ -359,12 +714,11 @@ export function useGeoPlusMap(
         const feature = features[0];
         const appLayer = findAppLayer(feature.layer.id);
         
-        if (appLayer?.interactionConfig?.popupEnabled !== false) {
-          const html = buildPopupHtml(feature.properties, appLayer);
+        if (supportsFeatureInteractions(appLayer) && appLayer?.interactionConfig?.popupEnabled !== false) {
+          const html = buildPopupHtml(appLayer, feature.properties);
           if (html) {
-            if (!popupRef.current) {
-              popupRef.current = new maplibregl.Popup({ closeButton: true, closeOnClick: true, className: "geoplus-popup" });
-            }
+            popupRef.current?.remove();
+            popupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "geoplus-popup" });
             // For polygons, e.lngLat is just where they clicked. For points we could use geometry coordinates, but e.lngLat is reliable.
             popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
           }

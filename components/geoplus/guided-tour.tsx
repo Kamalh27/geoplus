@@ -37,6 +37,12 @@ export function GuidedTour({
   const [mounted, setMounted] = useState(false);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [popoverSize, setPopoverSize] = useState({ width: 340, height: 250 });
+  const [isDarkTheme, setIsDarkTheme] = useState(() => {
+    if (typeof document === "undefined") {
+      return true;
+    }
+    return document.documentElement.classList.contains("dark");
+  });
   const activeStep = steps[activeStepIndex];
   const popoverRef = useRef<HTMLDivElement>(null);
 
@@ -86,6 +92,21 @@ export function GuidedTour({
       };
     }
   }, [isOpen, updateTargetRect]);
+
+  useEffect(() => {
+    if (!mounted) {
+      return;
+    }
+    const root = document.documentElement;
+    const syncTheme = () => setIsDarkTheme(root.classList.contains("dark"));
+    syncTheme();
+
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => {
+      observer.disconnect();
+    };
+  }, [mounted]);
 
   if (!mounted || !isOpen || !activeStep) return null;
 
@@ -155,7 +176,7 @@ export function GuidedTour({
         <rect
           width="100%"
           height="100%"
-          fill="rgba(15, 23, 42, 0.65)"
+          fill={isDarkTheme ? "rgba(2, 6, 23, 0.76)" : "rgba(15, 23, 42, 0.58)"}
           mask="url(#guided-tour-mask)"
           className="backdrop-blur-[2px] transition-all duration-300"
           onClick={onClose}
@@ -165,7 +186,7 @@ export function GuidedTour({
       {/* Highlight ring */}
       {targetRect && (
         <div
-          className="absolute border-2 border-accent rounded-xl transition-all duration-300 shadow-[0_0_0_4px_rgba(var(--accent),0.2)]"
+          className="absolute rounded-xl border-2 border-accent shadow-[0_0_0_4px_rgba(20,212,159,0.2)] transition-all duration-300 dark:shadow-[0_0_0_4px_rgba(20,212,159,0.3)]"
           style={{
             top: targetRect.top - 6,
             left: targetRect.left - 6,
@@ -181,20 +202,20 @@ export function GuidedTour({
         className="absolute pointer-events-auto w-[340px] max-w-[90vw] transition-all duration-300"
         style={getPopoverStyle()}
       >
-        <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-black/5 dark:ring-white/10">
+        <div className="bg-card border border-border rounded-2xl shadow-2xl overflow-hidden ring-1 ring-black/5 dark:ring-white/10">
           <header className="px-4 pt-4 flex justify-between items-start">
             <div className="space-y-1">
               <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-accent">
                 Step {activeStepIndex + 1} of {steps.length}
               </p>
-              <h3 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+              <h3 className="text-lg font-semibold tracking-tight text-foreground">
                 {activeStep.title}
               </h3>
             </div>
             <Button
               variant="ghost"
               size="icon-sm"
-              className="rounded-full -mt-1 -mr-1 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800"
+              className="rounded-full -mt-1 -mr-1 text-muted-foreground hover:bg-muted"
               onClick={onClose}
             >
               <X className="size-4" />
@@ -202,17 +223,17 @@ export function GuidedTour({
           </header>
 
           <div className="px-4 py-3 space-y-3">
-            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            <p className="text-sm text-muted-foreground leading-relaxed">
               {activeStep.description}
             </p>
-            <div className="bg-slate-100 dark:bg-slate-800/50 rounded-xl p-3 border border-slate-200/50 dark:border-slate-700/50">
-              <p className="text-xs text-slate-700 dark:text-slate-300 leading-normal">
+            <div className="bg-muted/50 rounded-xl p-3 border border-border/50">
+              <p className="text-xs text-foreground/80 leading-normal">
                 {activeStep.details}
               </p>
             </div>
           </div>
 
-          <footer className="bg-slate-100/50 dark:bg-slate-800/30 px-4 py-3 flex items-center justify-between border-t border-slate-200 dark:border-slate-800">
+          <footer className="bg-muted/30 px-4 py-3 flex items-center justify-between border-t border-border">
             <div className="flex gap-1">
               {steps.map((_, index) => (
                 <button
@@ -221,7 +242,7 @@ export function GuidedTour({
                     "size-1.5 rounded-full transition-all",
                     index === activeStepIndex
                       ? "bg-accent w-4"
-                      : "bg-slate-300 dark:bg-slate-700 hover:bg-slate-400 dark:hover:bg-slate-600"
+                      : "bg-muted hover:bg-muted-foreground/30"
                   )}
                   onClick={() => onStepClick(index)}
                   aria-label={`Go to step ${index + 1}`}

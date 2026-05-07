@@ -79,3 +79,45 @@ export const getLayerGeometryFamilies = (layer: GeoPlusLayerItem): string[] => {
   const orderedFamilies = ["Point", "Line", "Polygon"];
   return orderedFamilies.filter((family) => families.has(family));
 };
+
+export const getLayerLabelFieldOptions = (layer: GeoPlusLayerItem) => {
+  const fieldsByCanonical = new Map<string, string>();
+  const addField = (fieldName: string) => {
+    const trimmed = fieldName.trim();
+    if (!trimmed) {
+      return;
+    }
+    const canonical = trimmed.toLocaleLowerCase();
+    if (!fieldsByCanonical.has(canonical)) {
+      fieldsByCanonical.set(canonical, trimmed);
+    }
+  };
+
+  const candidates = [layer.rawInlineData, layer.inlineData];
+  for (const candidate of candidates) {
+    if (!isGeoJsonFeatureCollection(candidate)) {
+      continue;
+    }
+    for (const feature of candidate.features.slice(0, 120)) {
+      const properties = feature?.properties;
+      if (!properties || typeof properties !== "object") {
+        continue;
+      }
+      for (const key of Object.keys(properties)) {
+        addField(key);
+      }
+    }
+  }
+
+  for (const column of layer.duckDbColumns ?? []) {
+    addField(column);
+  }
+
+  return [...fieldsByCanonical.values()].sort((left, right) => {
+    const baseCompare = left.localeCompare(right, undefined, { sensitivity: "base" });
+    if (baseCompare !== 0) {
+      return baseCompare;
+    }
+    return left.localeCompare(right);
+  });
+};

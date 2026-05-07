@@ -42,13 +42,13 @@ export function BasemapStylePanel({ selectedBasemapId, onSelectBasemap }: Basema
                     : "border-border/50 bg-card/35 text-muted-foreground hover:border-accent/40 hover:bg-accent/8 hover:text-foreground",
                 )}
               >
-                <div className="relative h-10 w-16 shrink-0 overflow-hidden rounded-[6px] border border-black/18 shadow-[0_3px_10px_rgba(0,0,0,0.2)]">
+                <div className="relative h-10 w-16 shrink-0 overflow-hidden rounded-[6px] border border-border/80 shadow-[0_3px_10px_rgba(15,23,42,0.2)] dark:shadow-[0_3px_12px_rgba(0,0,0,0.45)]">
                   <span
                     className="absolute inset-0 block bg-cover bg-center transition-transform duration-300 group-hover:scale-[1.04]"
                     style={{ backgroundImage: `url("${basemap.previewImage}")` }}
                     aria-hidden="true"
                   />
-                  <span className="absolute inset-0 bg-gradient-to-br from-white/8 via-transparent to-black/20" aria-hidden="true" />
+                  <span className="absolute inset-0 bg-gradient-to-br from-white/18 via-transparent to-black/16 dark:from-white/8 dark:to-black/34" aria-hidden="true" />
                 </div>
 
                 <span className="min-w-0 flex-1 truncate text-[0.86rem] font-semibold leading-snug tracking-[0.01em]">{basemap.label}</span>

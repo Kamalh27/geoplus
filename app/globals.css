@@ -210,6 +210,52 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
+.geoplus-map-root .geoplus-tooltip .maplibregl-popup-content,
+.geoplus-map-root .geoplus-popup .maplibregl-popup-content {
+  background: color-mix(in srgb, var(--card) 95%, transparent);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.2);
+  backdrop-filter: blur(8px);
+  font-size: 0.75rem;
+}
+
+.geoplus-map-root .geoplus-tooltip .maplibregl-popup-content {
+  padding: 0.75rem 1rem;
+}
+
+.geoplus-map-root .geoplus-popup .maplibregl-popup-content {
+  padding: 0;
+}
+
+.dark .geoplus-map-root .geoplus-tooltip .maplibregl-popup-content,
+.dark .geoplus-map-root .geoplus-popup .maplibregl-popup-content {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.geoplus-map-root .geoplus-tooltip .maplibregl-popup-tip,
+.geoplus-map-root .geoplus-popup .maplibregl-popup-tip {
+  border-top-color: var(--card);
+}
+
+.geoplus-map-root .maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  border-top-color: var(--card);
+}
+.geoplus-map-root .maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: var(--card);
+}
+.geoplus-map-root .maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--card);
+}
+.geoplus-map-root .maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--card);
+}
+
+.geoplus-map-root .geoplus-popup .maplibregl-popup-close-button {
+  display: none;
+}
+
 .geoplus-panel-scroll {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--accent) 42%, var(--border) 58%) color-mix(in srgb, var(--muted) 70%, transparent);

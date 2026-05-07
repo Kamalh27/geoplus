@@ -160,7 +160,7 @@ export function LayerStyleDialog({
                               className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground"
                             >
                               <span>{option.label}</span>
-                              <div className="flex h-3 w-16 overflow-hidden rounded-sm ring-1 ring-black/10">
+                              <div className="flex h-3 w-16 overflow-hidden rounded-sm ring-1 ring-black/10 dark:ring-white/15">
                                 {colors.map((c, i) => (
                                   <div key={i} className="h-full flex-1" style={{ backgroundColor: c }} />
                                 ))}
@@ -225,7 +225,7 @@ export function LayerStyleDialog({
                           classificationClasses: Number.parseInt(event.target.value, 10),
                         })
                       }
-                      className="h-1.5 w-full accent-emerald-400"
+                      className="h-1.5 w-full accent-accent"
                     />
                   </div>
                 )}
@@ -450,7 +450,7 @@ export function LayerStyleDialog({
                             fillOpacity: Number(event.target.value) / 100,
                           })
                         }
-                        className="h-1.5 w-full accent-emerald-400"
+                        className="h-1.5 w-full accent-accent"
                       />
                     </td>
                     <td className="px-4 py-2.5 text-right">
@@ -476,7 +476,7 @@ export function LayerStyleDialog({
                             lineWidth: clampValue(Number(event.target.value), 1, 12),
                           })
                         }
-                        className="h-1.5 w-full accent-emerald-400"
+                        className="h-1.5 w-full accent-accent"
                       />
                     </td>
                     <td className="px-4 py-2.5 text-right">
@@ -516,7 +516,7 @@ export function LayerStyleDialog({
                             pointRadius: Math.round(clampValue(Number(event.target.value), 2, 24)),
                           })
                         }
-                        className="h-1.5 w-full accent-emerald-400"
+                        className="h-1.5 w-full accent-accent"
                       />
                     </td>
                     <td className="px-4 py-2.5 text-right">
@@ -555,7 +555,7 @@ export function LayerStyleDialog({
                           labelSize: Math.round(clampValue(Number(event.target.value), 9, 28)),
                         })
                       }
-                      className="h-1.5 w-full accent-emerald-400"
+                      className="h-1.5 w-full accent-accent"
                     />
                   </td>
                   <td className="px-4 py-2.5 text-right">

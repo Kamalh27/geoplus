@@ -263,6 +263,8 @@ const getLayerStyleSpec = (layer: GeoPlusLayerItem): LayerStyleSpec => {
 const withAlpha = (rgb: [number, number, number], alpha: number): [number, number, number, number] => [rgb[0], rgb[1], rgb[2], alpha];
 const rgbToCss = (rgb: [number, number, number]) => `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
 const isDeckTileLayerType = (layerType: GeoPlusLayerType) => layerType === "mvt" || layerType === "raster-tile" || layerType === "wms";
+const getInteractionFieldLabel = (layer: GeoPlusLayerItem, field: string) =>
+  layer.interactionConfig?.fieldDisplayNames?.[field]?.trim() || humanizeColumnName(field);
 
 const extractScatterPoints = (inlineData: unknown): DeckPoint[] => {
   const geojson = asRecord(inlineData);
@@ -443,7 +445,7 @@ const buildAttributeColorSpec = (
     const uniqueValues = new Set<string>();
     for (const feature of featureCollection.features) {
       uniqueValues.add(toCategoryKey(getFeatureProperty(feature, field)));
-      if (uniqueValues.size >= 12) {
+      if (uniqueValues.size >= 512) {
         break;
       }
     }
@@ -749,7 +751,7 @@ export const syncMapLibreUserLayers = (map: maplibregl.Map, layers: GeoPlusLayer
       continue;
     }
     if (layer.layerType === "geojson") {
-      const data = layer.sourceUrl ?? layer.inlineData;
+      const data = layer.inlineData ?? layer.sourceUrl;
       if (!data) {
         continue;
       }
@@ -872,7 +874,7 @@ export const buildDeckUserLayers = (layers: GeoPlusLayerItem[]): DeckLayer[] => 
     const attributeColorSpec = buildAttributeColorSpec(layer, styleSpec);
     const layerOpacity = getLayerOpacity(layer);
     if (layer.layerType === "geojson") {
-      const data = layer.sourceUrl ?? layer.inlineData;
+      const data = layer.inlineData ?? layer.sourceUrl;
       if (!data) {
         continue;
       }
@@ -923,6 +925,7 @@ export const buildDeckUserLayers = (layers: GeoPlusLayerItem[]): DeckLayer[] => 
             billboard: true,
             fontWeight: 600,
             sizeUnits: "pixels",
+            fontFamily: "system-ui, sans-serif",
             getPosition: (point) => point.position,
             getText: (point) => point.text,
             getColor: withAlpha(styleSpec.label, Math.round(255 * layerOpacity)),
@@ -995,7 +998,7 @@ export const buildDeckUserLayers = (layers: GeoPlusLayerItem[]): DeckLayer[] => 
     }
 
     if (layer.layerType === "scatterplot") {
-      const scatterPoints = extractScatterPoints(layer.inlineData);
+      const scatterPoints = extractScatterPoints(layer.inlineData ?? layer.rawInlineData);
       if (scatterPoints.length > 0) {
         const isRingStyle = styleSpec.markerStyle === "ring";
         const isGlowStyle = styleSpec.markerStyle === "glow";
@@ -1039,6 +1042,7 @@ export const buildDeckUserLayers = (layers: GeoPlusLayerItem[]): DeckLayer[] => 
               billboard: true,
               fontWeight: 600,
               sizeUnits: "pixels",
+              fontFamily: "system-ui, sans-serif",
               getPosition: (point) => point.position,
               getText: (point) => point.text,
               getColor: withAlpha(styleSpec.label, Math.round(255 * layerOpacity)),
@@ -1251,7 +1255,7 @@ export const getGeoJsonLngLatBounds = (geojsonValue: unknown): maplibregl.LngLat
   ];
 };
 
-export const getLayerLngLatBounds = (layer: GeoPlusLayerItem): maplibregl.LngLatBoundsLike | null => getGeoJsonLngLatBounds(layer.inlineData);
+export const getLayerLngLatBounds = (layer: GeoPlusLayerItem): maplibregl.LngLatBoundsLike | null => getGeoJsonLngLatBounds(layer.inlineData ?? layer.rawInlineData);
 
 export const getDeckLayerTooltip = (info: Record<string, unknown>, appLayers: GeoPlusLayerItem[]) => {
   const object = info?.object as Record<string, unknown> | undefined;
@@ -1261,11 +1265,19 @@ export const getDeckLayerTooltip = (info: Record<string, unknown>, appLayers: Ge
 
   // Find corresponding app layer
   const layerInfo = info.layer as { id: string };
-  const layerId = layerInfo.id.replace(/^user-/, "");
-  const appLayer = appLayers.find((l) => toSafeLayerId(l.id) === layerId);
+  // Remove 'user-' prefix and split by '-' to handle DeckGL sub-layers like '-points' or '-polygons'
+  const rawId = layerInfo.id.replace(/^user-/, "");
+  const appLayer = appLayers.find((l) => {
+    const safeId = toSafeLayerId(l.id);
+    return rawId === safeId || rawId.startsWith(`${safeId}-`);
+  });
+
+  if (!appLayer) {
+    return null;
+  }
 
   // If layer explicitly disables tooltips, return null
-  if (appLayer?.interactionConfig?.tooltipEnabled === false) {
+  if (appLayer.interactionConfig?.tooltipEnabled === false) {
     return null;
   }
 
@@ -1276,7 +1288,7 @@ export const getDeckLayerTooltip = (info: Record<string, unknown>, appLayers: Ge
   if (tooltipFields && tooltipFields.length > 0) {
     const lines = tooltipFields.map((field) => {
       const val = properties[field];
-      return `${humanizeColumnName(field)}: ${val ?? "N/A"}`;
+      return `${getInteractionFieldLabel(appLayer, field)}: ${val ?? "N/A"}`;
     });
     return { text: lines.join("\n") };
   }

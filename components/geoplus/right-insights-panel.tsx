@@ -247,7 +247,7 @@ export function GeoPlusRightInsightsPanel({ isVisible, layer, isTablePanelVisibl
       }}
     >
       <div
-        className="pointer-events-auto relative flex flex-col overflow-hidden rounded-2xl border border-slate-600/65 bg-slate-900/90 text-slate-100 shadow-[0_18px_48px_rgba(15,23,42,0.45)] ring-1 ring-black/40 backdrop-blur-md"
+        className="pointer-events-auto relative flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card/90 text-foreground shadow-[0_18px_48px_rgba(15,23,42,0.24)] ring-1 ring-black/10 backdrop-blur-md dark:shadow-[0_22px_54px_rgba(0,0,0,0.58)] dark:ring-white/10"
         style={{
           width: `${size.width}px`,
           height: `${size.height}px`,
@@ -261,33 +261,33 @@ export function GeoPlusRightInsightsPanel({ isVisible, layer, isTablePanelVisibl
           className="absolute left-0 right-0 top-0 z-50 flex h-3 cursor-ns-resize items-center justify-center group"
           onMouseDown={(e) => handleResizeStart(e, "top")}
         >
-          <div className="h-1 w-8 rounded-full bg-slate-500/30 transition-colors group-hover:bg-emerald-400/60" />
+          <div className="h-1 w-8 rounded-full bg-muted-foreground/30 transition-colors group-hover:bg-accent/60" />
         </div>
         <div
           className="absolute bottom-0 left-0 right-0 z-50 flex h-3 cursor-ns-resize items-center justify-center group"
           onMouseDown={(e) => handleResizeStart(e, "bottom")}
         >
-          <div className="h-1 w-8 rounded-full bg-slate-500/30 transition-colors group-hover:bg-emerald-400/60" />
+          <div className="h-1 w-8 rounded-full bg-muted-foreground/30 transition-colors group-hover:bg-accent/60" />
         </div>
         <div
           className="absolute bottom-0 left-0 top-0 z-50 flex w-3 cursor-ew-resize items-center justify-center group"
           onMouseDown={(e) => handleResizeStart(e, "left")}
         >
-          <div className="h-8 w-1 rounded-full bg-slate-500/30 transition-colors group-hover:bg-emerald-400/60" />
+          <div className="h-8 w-1 rounded-full bg-muted-foreground/30 transition-colors group-hover:bg-accent/60" />
         </div>
         <div
           className="absolute bottom-0 right-0 top-0 z-50 flex w-3 cursor-ew-resize items-center justify-center group"
           onMouseDown={(e) => handleResizeStart(e, "right")}
         >
-          <div className="h-8 w-1 rounded-full bg-slate-500/30 transition-colors group-hover:bg-emerald-400/60" />
+          <div className="h-8 w-1 rounded-full bg-muted-foreground/30 transition-colors group-hover:bg-accent/60" />
         </div>
 
-        <div className="mt-2 flex cursor-move items-center justify-between border-b border-slate-700/80 px-4 py-2" onMouseDown={handleMouseDown}>
+        <div className="mt-2 flex cursor-move items-center justify-between border-b border-border/80 px-4 py-2" onMouseDown={handleMouseDown}>
           <div className="flex items-center gap-2">
-            <GripHorizontal className="size-4 text-slate-400" />
+            <GripHorizontal className="size-4 text-muted-foreground" />
             <div>
-              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-slate-300">Insights</p>
-              <p className="w-56 truncate text-xs text-slate-100">{layer?.name ?? "No Dataset Selected"}</p>
+              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-foreground/90">Insights</p>
+              <p className="w-56 truncate text-xs text-foreground">{layer?.name ?? "No Dataset Selected"}</p>
             </div>
           </div>
           {onClose ? (
@@ -296,7 +296,7 @@ export function GeoPlusRightInsightsPanel({ isVisible, layer, isTablePanelVisibl
               size="icon-xs"
               onClick={onClose}
               onMouseDown={(e) => e.stopPropagation()}
-              className="cursor-pointer rounded-full text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+              className="cursor-pointer rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               <X className="size-4" />
             </Button>
@@ -304,28 +304,28 @@ export function GeoPlusRightInsightsPanel({ isVisible, layer, isTablePanelVisibl
         </div>
 
         {!layer ? (
-          <div className="flex flex-1 items-center justify-center px-5 text-sm text-slate-300">
+          <div className="flex flex-1 items-center justify-center px-5 text-sm text-foreground/90">
             Open the Tools tab and select a queryable layer to view chart insights here.
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <div className="flex shrink-0 items-center justify-between border-b border-slate-700/70 px-4 py-2">
-              <p className="inline-flex items-center gap-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-slate-300">
+            <div className="flex shrink-0 items-center justify-between border-b border-border/70 px-4 py-2">
+              <p className="inline-flex items-center gap-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.1em] text-foreground/90">
                 <BarChart3 className="size-3.5" />
                 Chart
               </p>
-              <span className="text-[0.68rem] text-slate-400">{chartData.length} groups</span>
+              <span className="text-[0.68rem] text-muted-foreground">{chartData.length} groups</span>
             </div>
 
             <div className="geoplus-panel-scroll flex-1 overflow-y-auto overflow-x-auto px-4 py-3 min-h-0">
               {chartData.length === 0 ? (
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-muted-foreground">
                   {sourceFeatureCollection ? "Apply filters from the Tools sidebar to generate chart groups." : "This layer does not contain queryable chart data."}
                 </p>
               ) : (
                 <div className="space-y-3 min-w-[280px]">
-                  <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-700/70 bg-slate-900/55 p-3 md:grid-cols-6">
-                    <label className="col-span-2 flex flex-col gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-slate-300">
+                  <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/70 bg-muted/50 p-3 md:grid-cols-6">
+                    <label className="col-span-2 flex flex-col gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-foreground/90">
                       Chart Dimension
                       <select
                         value={layer?.duckDbChartLabelColumn ?? ""}
@@ -334,7 +334,7 @@ export function GeoPlusRightInsightsPanel({ isVisible, layer, isTablePanelVisibl
                             onChangeChartColumn(layer.id, event.target.value);
                           }
                         }}
-                        className="h-8 rounded border border-slate-600 bg-slate-950/85 px-2 text-sm font-medium normal-case tracking-normal text-slate-100 outline-none focus:border-emerald-400/70"
+                        className="h-8 rounded border border-input bg-background/90 px-2 text-sm font-medium normal-case tracking-normal text-foreground outline-none focus:border-accent/70"
                       >
                         {(layer?.duckDbChartColumns ?? []).map((col) => (
                           <option key={col.columnName} value={col.columnName}>
@@ -344,12 +344,12 @@ export function GeoPlusRightInsightsPanel({ isVisible, layer, isTablePanelVisibl
                       </select>
                     </label>
 
-                    <label className="flex flex-col gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-slate-300">
+                    <label className="flex flex-col gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-foreground/90">
                       Chart Type
                       <select
                         value={chartType}
                         onChange={(event) => setChartType(event.target.value as ChartType)}
-                        className="h-8 rounded border border-slate-600 bg-slate-950/85 px-2 text-sm font-medium normal-case tracking-normal text-slate-100 outline-none focus:border-emerald-400/70"
+                        className="h-8 rounded border border-input bg-background/90 px-2 text-sm font-medium normal-case tracking-normal text-foreground outline-none focus:border-accent/70"
                       >
                         {chartTypeOptions.map((option) => (
                           <option key={option.id} value={option.id}>
@@ -359,12 +359,12 @@ export function GeoPlusRightInsightsPanel({ isVisible, layer, isTablePanelVisibl
                       </select>
                     </label>
 
-                    <label className="flex flex-col gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-slate-300">
+                    <label className="flex flex-col gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-foreground/90">
                       Palette
                       <select
                         value={chartPalette}
                         onChange={(event) => setChartPalette(event.target.value as ChartPaletteId)}
-                        className="h-8 rounded border border-slate-600 bg-slate-950/85 px-2 text-sm font-medium normal-case tracking-normal text-slate-100 outline-none focus:border-emerald-400/70"
+                        className="h-8 rounded border border-input bg-background/90 px-2 text-sm font-medium normal-case tracking-normal text-foreground outline-none focus:border-accent/70"
                       >
                         {Object.entries(chartPalettes).map(([paletteId, paletteConfig]) => (
                           <option key={paletteId} value={paletteId}>
@@ -374,7 +374,7 @@ export function GeoPlusRightInsightsPanel({ isVisible, layer, isTablePanelVisibl
                       </select>
                     </label>
 
-                    <label className="flex flex-col gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-slate-300">
+                    <label className="flex flex-col gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-foreground/90">
                       Max Items
                       <input
                         type="number"
@@ -388,11 +388,11 @@ export function GeoPlusRightInsightsPanel({ isVisible, layer, isTablePanelVisibl
                           }
                           setChartMaxItems(Math.max(3, Math.min(20, Math.round(parsedValue))));
                         }}
-                        className="h-8 rounded border border-slate-600 bg-slate-950/85 px-2 text-sm font-medium normal-case tracking-normal text-slate-100 outline-none focus:border-emerald-400/70"
+                        className="h-8 rounded border border-input bg-background/90 px-2 text-sm font-medium normal-case tracking-normal text-foreground outline-none focus:border-accent/70"
                       />
                     </label>
 
-                    <label className="col-span-2 flex items-center gap-2 self-end rounded border border-slate-700/70 bg-slate-950/65 px-2 py-1.5 text-sm text-slate-100">
+                    <label className="col-span-2 flex items-center gap-2 self-end rounded border border-border/70 bg-background/70 px-2 py-1.5 text-sm text-foreground">
                       <input
                         type="checkbox"
                         checked={chartShowValues}
@@ -403,21 +403,21 @@ export function GeoPlusRightInsightsPanel({ isVisible, layer, isTablePanelVisibl
                     </label>
                   </div>
 
-                  <div className="flex items-center justify-between rounded-lg border border-slate-700/70 bg-slate-900/60 px-3 py-2 text-sm">
-                    <span className="text-slate-300">
+                  <div className="flex items-center justify-between rounded-lg border border-border/70 bg-muted/60 px-3 py-2 text-sm">
+                    <span className="text-foreground/90">
                       Showing top {chartDisplayData.length} of {chartData.length} categories
                     </span>
                     <button
                       type="button"
                       onClick={downloadCurrentChart}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-slate-600 bg-slate-950/75 px-2.5 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-slate-100 transition hover:border-emerald-400/70 hover:text-emerald-200"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background/80 px-2.5 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-foreground transition hover:border-accent/70 hover:text-accent"
                     >
                       <Download className="size-3.5" />
                       Download PNG
                     </button>
                   </div>
 
-                  <div className="geoplus-panel-scroll overflow-auto rounded-lg border border-slate-700/70 bg-slate-950/65">
+                  <div className="geoplus-panel-scroll overflow-auto rounded-lg border border-border/70 bg-background/70">
                     <GeoPlusEchartsInsightChart
                       ref={chartPreviewRef}
                       data={chartDisplayData}
@@ -432,7 +432,7 @@ export function GeoPlusRightInsightsPanel({ isVisible, layer, isTablePanelVisibl
                 </div>
               )}
 
-              <div className="mt-4 min-w-[280px] rounded-lg border border-slate-700/70 bg-slate-900/50 p-3">
+              <div className="mt-4 min-w-[280px] rounded-lg border border-border/70 bg-muted/50 p-3">
                 <GeoPlusAiInsights layer={layer} />
               </div>
             </div>

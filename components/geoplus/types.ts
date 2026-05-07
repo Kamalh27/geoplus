@@ -121,5 +121,12 @@ export type GeoPlusLayerItem = {
     popupEnabled?: boolean;
     tooltipFields?: string[];
     popupFields?: string[];
+    fieldDisplayNames?: Record<string, string>;
+    hoverHighlightEnabled?: boolean;
+    hoverHighlightColor?: string;
+    hoverLineColor?: string;
+    hoverFillOpacity?: number;
+    hoverLineWidth?: number;
+    hoverPointRadius?: number;
   };
 };

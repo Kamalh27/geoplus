@@ -467,7 +467,7 @@ export function AiAssistantPanel({ layers = [] }: AiAssistantPanelProps) {
                 Provider
               </label>
               <select
-                className="flex h-9 w-full rounded-md border border-input bg-background/50 px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring dark:bg-slate-800/50"
+                className="flex h-9 w-full rounded-md border border-input bg-background/50 px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 value={settings.provider}
                 onChange={(e) => {
                   const newProvider = e.target.value as AiProvider;
@@ -518,7 +518,7 @@ export function AiAssistantPanel({ layers = [] }: AiAssistantPanelProps) {
                 }
                 value={settings.apiKey || ""}
                 onChange={(e) => updateSettings({ apiKey: e.target.value })}
-                className="bg-background/50 dark:bg-slate-800/50"
+                className="bg-background/50"
               />
             </div>
 
@@ -531,7 +531,7 @@ export function AiAssistantPanel({ layers = [] }: AiAssistantPanelProps) {
                   placeholder="http://localhost:11434 or http://localhost:1234/v1"
                   value={settings.baseUrl || ""}
                   onChange={(e) => updateSettings({ baseUrl: e.target.value })}
-                  className="bg-background/50 dark:bg-slate-800/50"
+                  className="bg-background/50"
                 />
                 {localEndpointStatus ? (
                   <div className="flex items-start gap-1.5 text-[0.65rem] text-muted-foreground">
@@ -552,7 +552,7 @@ export function AiAssistantPanel({ layers = [] }: AiAssistantPanelProps) {
                     placeholder={availableModels[0] || "e.g. gpt-4o"}
                     value={settings.model || ""}
                     onChange={(e) => updateSettings({ model: e.target.value })}
-                    className="bg-background/50 dark:bg-slate-800/50 pr-8"
+                    className="bg-background/50 pr-8"
                     list={`${settings.provider}-models`}
                   />
                   <datalist id={`${settings.provider}-models`}>
@@ -569,7 +569,7 @@ export function AiAssistantPanel({ layers = [] }: AiAssistantPanelProps) {
                   placeholder="e.g. your-custom-model-name"
                   value={settings.model || ""}
                   onChange={(e) => updateSettings({ model: e.target.value })}
-                  className="bg-background/50 dark:bg-slate-800/50"
+                  className="bg-background/50"
                 />
               )}
             </div>

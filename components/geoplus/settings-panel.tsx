@@ -90,7 +90,7 @@ export function SettingsPanel() {
 
           <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
             <div className="flex items-center gap-3">
-              <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+              <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                 <Moon className="size-4" />
               </div>
               <div>
@@ -107,7 +107,7 @@ export function SettingsPanel() {
           <h3 className="text-[0.7rem] font-bold uppercase tracking-wider text-muted-foreground">Basemap Defaults</h3>
           <div className="rounded-lg border border-border/50 bg-card/40 p-3">
             <div className="flex items-center gap-3">
-              <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+              <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                 <Globe className="size-4" />
               </div>
               <div className="min-w-0 flex-1">
@@ -136,7 +136,7 @@ export function SettingsPanel() {
             
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <ZoomIn className="size-4" />
                 </div>
                 <div>
@@ -152,7 +152,7 @@ export function SettingsPanel() {
 
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <Search className="size-4" />
                 </div>
                 <div>
@@ -168,7 +168,7 @@ export function SettingsPanel() {
 
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <Compass className="size-4" />
                 </div>
                 <div>
@@ -184,7 +184,7 @@ export function SettingsPanel() {
 
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <Ruler className="size-4" />
                 </div>
                 <div>
@@ -200,7 +200,7 @@ export function SettingsPanel() {
 
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <Map className="size-4" />
                 </div>
                 <div>
@@ -238,7 +238,7 @@ export function SettingsPanel() {
             
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <Zap className="size-4" />
                 </div>
                 <div>
@@ -254,7 +254,7 @@ export function SettingsPanel() {
 
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <Info className="size-4" />
                 </div>
                 <div>
@@ -270,7 +270,7 @@ export function SettingsPanel() {
 
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <Info className="size-4" />
                 </div>
                 <div>
@@ -286,7 +286,7 @@ export function SettingsPanel() {
 
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <Info className="size-4" />
                 </div>
                 <div>
@@ -299,7 +299,7 @@ export function SettingsPanel() {
 
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <Pencil className="size-4" />
                 </div>
                 <div>
@@ -312,7 +312,7 @@ export function SettingsPanel() {
 
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <Focus className="size-4" />
                 </div>
                 <div>
@@ -325,7 +325,7 @@ export function SettingsPanel() {
 
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <Table2 className="size-4" />
                 </div>
                 <div>
@@ -338,7 +338,7 @@ export function SettingsPanel() {
 
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <BarChart3 className="size-4" />
                 </div>
                 <div>
@@ -351,7 +351,7 @@ export function SettingsPanel() {
 
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <Palette className="size-4" />
                 </div>
                 <div>
@@ -364,7 +364,7 @@ export function SettingsPanel() {
 
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <Type className="size-4" />
                 </div>
                 <div>
@@ -377,7 +377,7 @@ export function SettingsPanel() {
 
             <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/50 bg-card/40 p-3 transition hover:bg-accent/5">
               <div className="flex items-center gap-3">
-                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50 dark:bg-slate-800">
+                <div className="rounded-md bg-background/80 p-1.5 text-accent shadow-sm ring-1 ring-border/50">
                   <EllipsisVertical className="size-4" />
                 </div>
                 <div>

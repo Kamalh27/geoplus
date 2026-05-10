@@ -265,15 +265,17 @@ export const parseGeoparquetUpload: UploadFileParser = async (file) => {
       throw new Error("No geometries found in GeoParquet file.");
     }
 
-    return {
-      formatLabel: "GeoParquet",
-      layerType: inferLayerType(features),
-      inlineData: {
-        type: "FeatureCollection",
-        features,
-      },
-      readyMessage: "GeoParquet parsed and ready to add.",
-    };
+    return [
+      {
+        formatLabel: "GeoParquet",
+        layerType: inferLayerType(features),
+        inlineData: {
+          type: "FeatureCollection",
+          features,
+        },
+        readyMessage: "GeoParquet parsed and ready to add.",
+      }
+    ];
   } finally {
     try {
       if (connection) {

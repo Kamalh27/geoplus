@@ -272,6 +272,7 @@ export const buildLayerFromAddDataInput = (args: {
     sourceUrl,
     serviceType: mode === "service" ? serviceType : undefined,
     fileName: mode === "upload" ? fileName : undefined,
+    originalFile: mode === "upload" ? parsedUploadLayer?.originalFile : undefined,
     inlineData,
     detectionSummary:
       mode === "upload" && parsedUploadLayer

@@ -1,4 +1,4 @@
-import type { UploadFileParser } from "@/lib/geoplus/upload-parsers/types";
+import type { UploadFileParser, ParsedUploadLayer } from "@/lib/geoplus/upload-parsers/types";
 
 type GeoPackageRuntime = {
   GeoPackageAPI: {
@@ -101,12 +101,13 @@ export const parseGeoPackageUpload: UploadFileParser = async (file) => {
       throw new Error("GeoPackage does not contain any feature tables.");
     }
 
-    const mergedFeatures: GeoJSON.Feature[] = [];
+    const parsedLayers: ParsedUploadLayer[] = [];
 
     for (const table of featureTables) {
       const featureDao = geoPackage.getFeatureDao(table);
       const srs = featureDao.srs;
       const iterator = featureDao.queryForEach();
+      const features: GeoJSON.Feature[] = [];
 
       for (const row of iterator) {
         if (!row) {
@@ -121,23 +122,28 @@ export const parseGeoPackageUpload: UploadFileParser = async (file) => {
           properties.source_table = table;
         }
 
-        mergedFeatures.push({
+        features.push({
           ...parsedFeature,
           properties,
         });
       }
+      
+      if (features.length > 0) {
+        parsedLayers.push({
+          layerName: table,
+          formatLabel: "GeoPackage",
+          layerType: inferLayerType(features),
+          inlineData: toFeatureCollection(features),
+          readyMessage: `GeoPackage layer "${table}" parsed and ready to add.`,
+        });
+      }
     }
 
-    if (mergedFeatures.length === 0) {
+    if (parsedLayers.length === 0) {
       throw new Error("No features found in GeoPackage feature tables.");
     }
 
-    return {
-      formatLabel: "GeoPackage",
-      layerType: inferLayerType(mergedFeatures),
-      inlineData: toFeatureCollection(mergedFeatures),
-      readyMessage: "GeoPackage parsed and ready to add.",
-    };
+    return parsedLayers;
   } finally {
     geoPackage.close();
   }

@@ -58,6 +58,7 @@ type LayerStyleDialogProps = {
   };
   onSetLayerStylePreset: (layerId: string, preset: GeoPlusLayerStylePreset) => void;
   onSetLayerStyleConfig: (layerId: string, config: Partial<GeoPlusLayerStyleConfig>) => void;
+  onSetLayerOpacity: (layerId: string, opacity: number) => void;
   handleCustomMarkerUpload: (layerId: string, file: File | null) => void;
   getLayerStyleFieldOptions: (layer: GeoPlusLayerItem) => string[];
   clampValue: (value: number, min: number, max: number) => number;
@@ -76,6 +77,7 @@ export function LayerStyleDialog({
   defaultStyleConfig,
   onSetLayerStylePreset,
   onSetLayerStyleConfig,
+  onSetLayerOpacity,
   handleCustomMarkerUpload,
   getLayerStyleFieldOptions,
   clampValue,
@@ -436,30 +438,26 @@ export function LayerStyleDialog({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
-                {hasPolygons && (
-                  <tr className="transition-colors hover:bg-muted/10">
-                    <td className="px-4 py-2.5 text-xs font-medium text-foreground">Fill Opacity</td>
-                    <td className="px-4 py-2.5">
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={Math.round((layer.styleConfig?.fillOpacity ?? defaultStyleConfig.fillOpacity) * 100)}
-                        onChange={(event) =>
-                          onSetLayerStyleConfig(layer.id, {
-                            fillOpacity: Number(event.target.value) / 100,
-                          })
-                        }
-                        className="h-1.5 w-full accent-accent"
-                      />
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <span className="inline-block w-14 rounded border border-border/50 bg-muted/20 px-2 py-1 text-xs text-foreground text-center">
-                        {Math.round((layer.styleConfig?.fillOpacity ?? defaultStyleConfig.fillOpacity) * 100)}%
-                      </span>
-                    </td>
-                  </tr>
-                )}
+                <tr className="transition-colors hover:bg-muted/10">
+                  <td className="px-4 py-2.5 text-xs font-medium text-foreground">Layer Opacity</td>
+                  <td className="px-4 py-2.5">
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={Math.round(layer.opacity * 100)}
+                      onChange={(event) =>
+                        onSetLayerOpacity(layer.id, Number(event.target.value) / 100)
+                      }
+                      className="h-1.5 w-full accent-accent"
+                    />
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <span className="inline-block w-14 rounded border border-border/50 bg-muted/20 px-2 py-1 text-xs text-foreground text-center">
+                      {Math.round(layer.opacity * 100)}%
+                    </span>
+                  </td>
+                </tr>
 
                 {(hasLines || hasPolygons) && (
                   <tr className="transition-colors hover:bg-muted/10">

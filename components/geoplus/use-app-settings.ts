@@ -10,6 +10,20 @@ const VALID_BASEMAP_IDS = new Set<GeoPlusBasemapId>(["dark", "light", "satellite
 const VALID_THEMES = new Set<AppTheme>(["dark", "light", "system"]);
 
 export type AppTheme = "dark" | "light" | "system";
+export type ControlPosition = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+export type ControlOrientation = "vertical" | "horizontal";
+export type StandardControlLayout = "default" | "compact";
+export type StandardControlItem = "search" | "zoom" | "compass" | "view3d" | "projection" | "legend" | "locate" | "fullscreen";
+export type ControlGroupLayout = "split" | "compact";
+export type ControlGroupSetting = {
+  id: string;
+  name: string;
+  position: ControlPosition;
+  orientation: ControlOrientation;
+  layout: ControlGroupLayout;
+  items: StandardControlItem[];
+};
+
 export type LayerToolSettings = {
   showInfo: boolean;
   showRename: boolean;
@@ -29,6 +43,13 @@ export type AppSettings = {
   showCompass: boolean;
   showFullscreenControl: boolean;
   showThemeToggle: boolean;
+  mapControlPosition: ControlPosition;
+  mapControlOrientation: ControlOrientation;
+  standardControlLayout: StandardControlLayout;
+  standardControlItems: StandardControlItem[];
+  customControlGroups: ControlGroupSetting[];
+  drawControlPosition: ControlPosition;
+  drawControlOrientation: ControlOrientation;
   defaultBasemap: GeoPlusBasemapId;
   autoZoomToLayers: boolean;
   showLayerTooltips: boolean;
@@ -44,6 +65,13 @@ const defaultSettings: AppSettings = {
   showCompass: true,
   showFullscreenControl: true,
   showThemeToggle: true,
+  mapControlPosition: "top-right",
+  mapControlOrientation: "vertical",
+  standardControlLayout: "default",
+  standardControlItems: ["search", "zoom", "compass", "view3d", "projection", "legend", "locate", "fullscreen"],
+  customControlGroups: [],
+  drawControlPosition: "top-left",
+  drawControlOrientation: "vertical",
   defaultBasemap: FALLBACK_DEFAULT_BASEMAP_ID,
   autoZoomToLayers: true,
   showLayerTooltips: true,
@@ -65,6 +93,92 @@ const normalizeBasemapId = (value: unknown): GeoPlusBasemapId => {
     return FALLBACK_DEFAULT_BASEMAP_ID;
   }
   return VALID_BASEMAP_IDS.has(value as GeoPlusBasemapId) ? (value as GeoPlusBasemapId) : FALLBACK_DEFAULT_BASEMAP_ID;
+};
+
+const normalizeControlPosition = (value: unknown, fallback: ControlPosition): ControlPosition => {
+  if (value === "top-left" || value === "top-right" || value === "bottom-left" || value === "bottom-right") {
+    return value;
+  }
+  return fallback;
+};
+
+const normalizeControlOrientation = (value: unknown, fallback: ControlOrientation): ControlOrientation => {
+  if (value === "vertical" || value === "horizontal") {
+    return value;
+  }
+  return fallback;
+};
+
+const normalizeStandardControlLayout = (value: unknown): StandardControlLayout => {
+  if (value === "compact" || value === "default") {
+    return value;
+  }
+  return defaultSettings.standardControlLayout;
+};
+
+const normalizeControlGroupLayout = (value: unknown): ControlGroupLayout => {
+  if (value === "compact" || value === "split") {
+    return value;
+  }
+  return "split";
+};
+
+const VALID_STANDARD_CONTROL_ITEMS = new Set<StandardControlItem>([
+  "search",
+  "zoom",
+  "compass",
+  "view3d",
+  "projection",
+  "legend",
+  "locate",
+  "fullscreen",
+]);
+
+const normalizeStandardControlItems = (value: unknown): StandardControlItem[] => {
+  if (!Array.isArray(value)) {
+    return defaultSettings.standardControlItems;
+  }
+  const seen = new Set<StandardControlItem>();
+  const normalized: StandardControlItem[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") {
+      continue;
+    }
+    const typedItem = item as StandardControlItem;
+    if (!VALID_STANDARD_CONTROL_ITEMS.has(typedItem) || seen.has(typedItem)) {
+      continue;
+    }
+    seen.add(typedItem);
+    normalized.push(typedItem);
+  }
+  return normalized;
+};
+
+const normalizeCustomControlGroups = (value: unknown): ControlGroupSetting[] => {
+  if (!Array.isArray(value)) {
+    return defaultSettings.customControlGroups;
+  }
+  const normalized: ControlGroupSetting[] = [];
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== "object") {
+      continue;
+    }
+    const typedCandidate = candidate as Partial<ControlGroupSetting>;
+    const id = typeof typedCandidate.id === "string" ? typedCandidate.id.trim() : "";
+    const name = typeof typedCandidate.name === "string" ? typedCandidate.name.trim() : "";
+    if (!id || !name) {
+      continue;
+    }
+    normalized.push({
+      id,
+      name,
+      position: normalizeControlPosition(typedCandidate.position, "top-right"),
+      orientation: normalizeControlOrientation(typedCandidate.orientation, "vertical"),
+      layout: normalizeControlGroupLayout(typedCandidate.layout),
+      items: normalizeStandardControlItems(typedCandidate.items),
+    });
+  }
+  return normalized;
 };
 
 const normalizeLayerTools = (value: unknown): LayerToolSettings => {
@@ -98,6 +212,13 @@ const normalizeSettings = (value: unknown): AppSettings => {
     showCompass: candidate.showCompass ?? defaultSettings.showCompass,
     showFullscreenControl: candidate.showFullscreenControl ?? defaultSettings.showFullscreenControl,
     showThemeToggle: candidate.showThemeToggle ?? defaultSettings.showThemeToggle,
+    mapControlPosition: normalizeControlPosition(candidate.mapControlPosition, defaultSettings.mapControlPosition),
+    mapControlOrientation: normalizeControlOrientation(candidate.mapControlOrientation, defaultSettings.mapControlOrientation),
+    standardControlLayout: normalizeStandardControlLayout(candidate.standardControlLayout),
+    standardControlItems: normalizeStandardControlItems(candidate.standardControlItems),
+    customControlGroups: normalizeCustomControlGroups(candidate.customControlGroups),
+    drawControlPosition: normalizeControlPosition(candidate.drawControlPosition, defaultSettings.drawControlPosition),
+    drawControlOrientation: normalizeControlOrientation(candidate.drawControlOrientation, defaultSettings.drawControlOrientation),
     defaultBasemap: normalizeBasemapId(candidate.defaultBasemap),
     autoZoomToLayers: candidate.autoZoomToLayers ?? defaultSettings.autoZoomToLayers,
     showLayerTooltips: candidate.showLayerTooltips ?? defaultSettings.showLayerTooltips,
@@ -106,7 +227,7 @@ const normalizeSettings = (value: unknown): AppSettings => {
   };
 };
 
-type AppSettingsUpdate = Omit<Partial<AppSettings>, "layerTools"> & {
+export type AppSettingsUpdate = Omit<Partial<AppSettings>, "layerTools"> & {
   layerTools?: Partial<LayerToolSettings>;
 };
 

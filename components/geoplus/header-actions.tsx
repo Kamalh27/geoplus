@@ -1,21 +1,21 @@
 "use client";
 
-import { Megaphone, Waypoints, BookOpenText, Bug, PanelLeftClose } from "lucide-react";
+import { Megaphone, Waypoints, BookOpenText, Bug, PanelLeftClose, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { AppSettings } from "@/components/geoplus/use-app-settings";
 
 type GeoPlusHeaderProps = {
   settings: AppSettings;
-  onOpenDialog: (dialogId: "announcement" | "guide" | "user-manual" | "bug-fix-form") => void;
+  onOpenDialog: (dialogId: "announcement" | "guide" | "user-manual" | "bug-fix-form" | "save-dashboard") => void;
   onToggleSidebar: () => void;
 };
 
 export function GeoPlusHeader({ settings, onOpenDialog, onToggleSidebar }: GeoPlusHeaderProps) {
   return (
     <header className="px-3 pt-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
           <h1 className="brand-serif text-2xl leading-tight tracking-tight text-foreground">
             GeoPlus
             <sup className="ml-1 align-super text-[0.6rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
@@ -23,7 +23,7 @@ export function GeoPlusHeader({ settings, onOpenDialog, onToggleSidebar }: GeoPl
             </sup>
           </h1>
 
-          <div id="geoplus-header-actions" className="mt-1.5 flex items-center gap-1.5">
+          <div id="geoplus-header-actions" className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <Button
               variant="ghost"
               size="icon-sm"
@@ -64,13 +64,21 @@ export function GeoPlusHeader({ settings, onOpenDialog, onToggleSidebar }: GeoPl
             >
               <Bug className="size-4" />
             </Button>
+            <div className="mx-0.5 h-4 w-px bg-border/50 hidden sm:block" />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-md hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent dark:hover:text-foreground"
+              title="Save Dashboard"
+              aria-label="Save Dashboard"
+              onClick={() => onOpenDialog("save-dashboard")}
+            >
+              <Save className="size-4" />
+            </Button>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {settings.showThemeToggle ? (
-            <ThemeToggle className="!hover:bg-accent !hover:text-accent-foreground dark:!hover:bg-accent dark:!hover:text-foreground hover:[&_svg]:!text-accent-foreground dark:hover:[&_svg]:!text-foreground" />
-          ) : null}
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
           <Button
             variant="ghost"
             size="icon-sm"
@@ -81,6 +89,9 @@ export function GeoPlusHeader({ settings, onOpenDialog, onToggleSidebar }: GeoPl
           >
             <PanelLeftClose className="size-4" />
           </Button>
+          {settings.showThemeToggle ? (
+            <ThemeToggle className="rounded-md" />
+          ) : null}
         </div>
       </div>
     </header>

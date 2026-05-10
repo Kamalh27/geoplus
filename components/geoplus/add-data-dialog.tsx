@@ -50,12 +50,12 @@ const modeOptions: {
   icon: ComponentType<{ className?: string }>;
   helper: string;
 }[] = [
-  { id: "upload", label: "Upload", icon: Upload, helper: "Upload geospatial data from your local computer" },
+  { id: "upload", label: "Upload", icon: Upload, helper: "Import spatial datasets from local workstation" },
   { id: "service", label: "Tileset", icon: Link2, helper: "Connect WMS, WMTS, MVT, PMTiles, COG, and more" },
-  { id: "url", label: "URL", icon: Download, helper: "Load datasets from external URLs or object storage" },
-  { id: "gis-paste", label: "Paste", icon: Clipboard, helper: "Paste GeoJSON or WKT geometry" },
-  { id: "existing-layers", label: "Hosted Layers", icon: Database, helper: "View hosted account layers" },
-  { id: "sample-layers", label: "Sample Layers", icon: Layers3, helper: "Quick-start demo layers" },
+  { id: "url", label: "URL", icon: Download, helper: "Ingest datasets from cloud object storage or external URLs" },
+  { id: "gis-paste", label: "Paste", icon: Clipboard, helper: "Parse raw GeoJSON or WKT payload strings" },
+  { id: "existing-layers", label: "Hosted Layers", icon: Database, helper: "Access provisioned enterprise layers" },
+  { id: "sample-layers", label: "Sample Layers", icon: Layers3, helper: "Explore pre-configured demonstration environments" },
 ];
 
 const sampleLayerOptions: SampleLayerOption[] = [
@@ -194,7 +194,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
   const [layerConfigError, setLayerConfigError] = useState("");
   const [serviceUrl, setServiceUrl] = useState("");
   const [gisText, setGisText] = useState("");
-  const [parsedUploadLayer, setParsedUploadLayer] = useState<ParsedUploadLayer | null>(null);
+  const [parsedUploadLayers, setParsedUploadLayers] = useState<ParsedUploadLayer[]>([]);
   const [selectedSampleLayerId, setSelectedSampleLayerId] = useState(sampleLayersByServiceType.wms[0]?.id ?? "");
 
   const resetForm = () => {
@@ -213,7 +213,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
     setLayerConfigError("");
     setServiceUrl("");
     setGisText("");
-    setParsedUploadLayer(null);
+    setParsedUploadLayers([]);
     setSelectedSampleLayerId(sampleLayersByServiceType.wms[0]?.id ?? "");
   };
 
@@ -258,19 +258,21 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
   }, [externalUrl]);
 
   const resolvedSourceProjection = useMemo(
-    () =>
-      resolveProjectionChoice({
+    () => {
+      const parsedUploadLayer = parsedUploadLayers.length > 0 ? parsedUploadLayers[0] : null;
+      return resolveProjectionChoice({
         choice: sourceProjectionChoice,
         parsedUploadLayer,
-      }),
-    [parsedUploadLayer, sourceProjectionChoice],
+      });
+    },
+    [parsedUploadLayers, sourceProjectionChoice],
   );
 
-  const willReprojectToWgs84 = mode === "upload" && Boolean(parsedUploadLayer?.inlineData) && resolvedSourceProjection === "EPSG:3857";
+  const willReprojectToWgs84 = mode === "upload" && parsedUploadLayers.length > 0 && parsedUploadLayers.some((layer) => layer.inlineData) && resolvedSourceProjection === "EPSG:3857";
 
   const canSubmit = useMemo(() => {
     if (mode === "upload") {
-      return Boolean(fileName) && parsedUploadLayer !== null;
+      return Boolean(fileName) && parsedUploadLayers.length > 0;
     }
     if (mode === "url") {
       return isValidExternalUrl;
@@ -285,7 +287,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
       return false;
     }
     return Boolean(selectedSampleLayer);
-  }, [fileName, gisText, isValidExternalUrl, mode, parsedUploadLayer, selectedSampleLayer, serviceUrl]);
+  }, [fileName, gisText, isValidExternalUrl, mode, parsedUploadLayers.length, selectedSampleLayer, serviceUrl]);
 
   const onFetchUrl = () => {
     const nextUrl = externalUrl.trim();
@@ -331,7 +333,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
   const clearStagedUpload = () => {
     setFileName("");
     setFileSizeBytes(0);
-    setParsedUploadLayer(null);
+    setParsedUploadLayers([]);
     setSourceProjectionChoice("default");
     setLayerConfigError("");
     const fileInput = document.getElementById("dataset-upload") as HTMLInputElement | null;
@@ -379,36 +381,60 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
         layerTypePreference,
       });
 
-      const parsedUploadLayerForSubmit =
-        submitMode === "upload" && parsedUploadLayer
-          ? {
-              ...parsedUploadLayer,
-              inlineData:
-                parsedUploadLayer.inlineData && resolvedSourceProjection === "EPSG:3857"
-                  ? reprojectGeoJsonToWgs84(parsedUploadLayer.inlineData, resolvedSourceProjection)
-                  : parsedUploadLayer.inlineData,
-            }
-          : parsedUploadLayer;
+      if (submitMode === "upload" && parsedUploadLayers.length > 0) {
+        for (const layer of parsedUploadLayers) {
+          const parsedLayerForSubmit = {
+            ...layer,
+            inlineData:
+              layer.inlineData && resolvedSourceProjection === "EPSG:3857"
+                ? reprojectGeoJsonToWgs84(layer.inlineData, resolvedSourceProjection)
+                : layer.inlineData,
+          };
+          
+          const layerDisplayName = parsedUploadLayers.length > 1 && layer.layerName
+            ? (layerName ? `${layerName} - ${layer.layerName}` : layer.layerName)
+            : layerName;
 
-      const nextLayer = buildLayerFromAddDataInput({
-        mode: submitMode,
-        layerName,
-        fileName,
-        externalUrl,
-        serviceUrl: submitServiceUrl,
-        serviceType: submitServiceType,
-        gisText,
-        selectedSampleLayerName: selectedSampleLayer?.name,
-        existingLayers,
-        parsedUploadLayer: parsedUploadLayerForSubmit,
-        detectedPipeline: submitPipelineDetection,
-        resolvedLayerType: submitLayerType,
-        resolvedEngine: submitEngine,
-        rendererPreference,
-        layerTypePreference,
-      });
+          const nextLayer = buildLayerFromAddDataInput({
+            mode: submitMode,
+            layerName: layerDisplayName,
+            fileName,
+            externalUrl,
+            serviceUrl: submitServiceUrl,
+            serviceType: submitServiceType,
+            gisText,
+            selectedSampleLayerName: selectedSampleLayer?.name,
+            existingLayers,
+            parsedUploadLayer: parsedLayerForSubmit,
+            detectedPipeline: submitPipelineDetection,
+            resolvedLayerType: submitLayerType,
+            resolvedEngine: submitEngine,
+            rendererPreference,
+            layerTypePreference,
+          });
+          onAddLayer(nextLayer);
+        }
+      } else {
+        const nextLayer = buildLayerFromAddDataInput({
+          mode: submitMode,
+          layerName,
+          fileName,
+          externalUrl,
+          serviceUrl: submitServiceUrl,
+          serviceType: submitServiceType,
+          gisText,
+          selectedSampleLayerName: selectedSampleLayer?.name,
+          existingLayers,
+          parsedUploadLayer: parsedUploadLayers[0] ?? null,
+          detectedPipeline: submitPipelineDetection,
+          resolvedLayerType: submitLayerType,
+          resolvedEngine: submitEngine,
+          rendererPreference,
+          layerTypePreference,
+        });
 
-      onAddLayer(nextLayer);
+        onAddLayer(nextLayer);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to add layer.";
       setLayerConfigError(message);
@@ -582,7 +608,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                         onChange={async (event) => {
                           const file = event.target.files?.[0] ?? null;
                           setLayerConfigError("");
-                          setParsedUploadLayer(null);
+                          setParsedUploadLayers([]);
                           setSourceProjectionChoice("default");
 
                           if (!file) {
@@ -600,8 +626,11 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                           }
 
                           try {
-                            const parsedLayer = await parseUploadedSpatialFile(file);
-                            setParsedUploadLayer(parsedLayer);
+                            const parsedLayers = await parseUploadedSpatialFile(file);
+                            for (const layer of parsedLayers) {
+                              layer.originalFile = file;
+                            }
+                            setParsedUploadLayers(parsedLayers);
                           } catch (error) {
                             const message = error instanceof Error ? error.message : "Unable to parse the selected file.";
                             setLayerConfigError(message);
@@ -666,7 +695,13 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                                   ? "Coordinates will be reprojected to WGS84 before adding."
                                   : "Target projection stays WGS84 (EPSG:4326 / OGC:CRS84)."}
                               </p>
-                              {parsedUploadLayer ? <p className="text-xs text-muted-foreground">{parsedUploadLayer.readyMessage}</p> : null}
+                              {parsedUploadLayers.length > 0 && parsedUploadLayers.length <= 3 ? (
+                                parsedUploadLayers.map((layer, index) => (
+                                  <p key={index} className="text-xs text-muted-foreground">{layer.readyMessage}</p>
+                                ))
+                              ) : parsedUploadLayers.length > 3 ? (
+                                <p className="text-xs text-muted-foreground">{parsedUploadLayers.length} layers parsed and ready to add.</p>
+                              ) : null}
                             </div>
                           </div>
                         </div>

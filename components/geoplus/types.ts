@@ -13,7 +13,7 @@ export type GeoPlusServiceType = "wms" | "wmts" | "wfs" | "xyz" | "tms" | "mvt" 
 export type GeoPlusLayerStylePreset = "emerald" | "sky" | "amber" | "rose" | "slate" | "violet" | "lime" | "teal";
 export type GeoPlusLayerDuckDbStatus = "idle" | "processing" | "ready" | "error";
 export type GeoPlusLayerColumnKind = "text" | "number" | "boolean";
-export type GeoPlusSpatialAnalysisOperation = "buffer" | "clip";
+export type GeoPlusSpatialAnalysisOperation = "buffer" | "clip" | "simplify" | "smooth" | "fix_geometry";
 export type GeoPlusSpatialBufferUnit = "meters" | "kilometers" | "miles";
 export type GeoPlusMarkerStyle = "solid" | "ring" | "glow" | "symbol" | "image";
 export type GeoPlusMarkerSymbol = "dot" | "diamond" | "triangle" | "square" | "star" | "pin";
@@ -96,6 +96,7 @@ export type GeoPlusLayerItem = {
   sourceUrl?: string;
   serviceType?: GeoPlusServiceType;
   fileName?: string;
+  originalFile?: File;
   rawInlineData?: unknown;
   inlineData?: unknown;
   detectionSummary?: string;

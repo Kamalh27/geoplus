@@ -65,10 +65,12 @@ export const parseKmlUpload: UploadFileParser = async (file) => {
 
   const formatLabel = fileName.endsWith(".kmz") ? "KMZ" : "KML";
 
-  return {
-    formatLabel,
-    layerType: inferLayerType(featureCollection),
-    inlineData: featureCollection,
-    readyMessage: `${formatLabel} parsed and ready to add.`,
-  };
+  return [
+    {
+      formatLabel,
+      layerType: inferLayerType(featureCollection),
+      inlineData: featureCollection,
+      readyMessage: `${formatLabel} parsed and ready to add.`,
+    }
+  ];
 };

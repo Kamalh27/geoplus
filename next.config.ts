@@ -4,6 +4,8 @@ const nextConfig: NextConfig = {
   turbopack: {
     resolveAlias: {
       worker_threads: "./lib/empty.ts",
+      fs: "./lib/empty.ts",
+      path: "./lib/empty.ts",
     },
   },
   webpack: (config, { isServer }) => {
@@ -11,6 +13,8 @@ const nextConfig: NextConfig = {
       config.resolve.fallback = {
         ...config.resolve.fallback,
         worker_threads: false,
+        fs: false,
+        path: false,
       };
     }
     return config;

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Layers3, Map, PanelLeftOpen, Settings2, Sparkles, Wrench, Search, BookMarked, Plus, Compass, Box, Globe, LocateFixed, Maximize2, Megaphone, type LucideIcon } from "lucide-react";
+import { Layers3, Map, PanelLeftOpen, Settings2, Sparkles, Wrench, Search, BookMarked, Plus, Compass, Box, Globe, LocateFixed, Maximize2, Megaphone, Database, type LucideIcon } from "lucide-react";
 
 import { GuidedTour } from "@/components/geoplus/guided-tour";
 import { AiAssistantPanel } from "@/components/geoplus/ai/ai-assistant-panel";
@@ -15,7 +15,7 @@ import { LayerPanel } from "@/components/geoplus/layer-panel";
 import { DEFAULT_GLOBE_BASEMAP_ID, type GeoPlusBasemapId } from "@/components/geoplus/map-style";
 import { GeoPlusRightInsightsPanel } from "@/components/geoplus/right-insights-panel";
 import { SpatialToolsPanel } from "@/components/geoplus/spatial-tools-panel";
-import type { GeoPlusLayerItem } from "@/components/geoplus/types";
+import type { GeoPlusLayerItem, GeoPlusSpatialAnalysisOperation } from "@/components/geoplus/types";
 import { GeoPlusHeader } from "@/components/geoplus/header-actions";
 import { Button } from "@/components/ui/button";
 import { AnnouncementsDialog } from "@/components/geoplus/announcements-dialog";
@@ -25,9 +25,11 @@ import { runBasicSpatialAnalysis } from "@/lib/geoplus/spatial-analysis";
 import { cn } from "@/lib/utils";
 
 type WorkspaceTab = "layers" | "tools" | "basemap" | "ai" | "settings";
-type HelpDialogId = "announcement" | "guide" | "user-manual" | "bug-fix-form";
+type HelpDialogId = "announcement" | "guide" | "user-manual" | "bug-fix-form" | "save-dashboard";
 type GuideTopicId = "sidebar" | "header-actions" | "layers" | "tools" | "basemap" | "ai" | "settings" | "map-search" | "map-zoom" | "map-compass" | "map-3d" | "map-projection" | "map-legend" | "map-locate" | "map-fullscreen";
 import { BugFixDialog } from "@/components/geoplus/bug-fix-dialog";
+import { SaveDashboardDialog } from "@/components/geoplus/save-dashboard-dialog";
+import { hydrateDashboardLayers } from "@/lib/geoplus/dashboard-hydration";
 
 const workspaceTabs: {
   id: WorkspaceTab;
@@ -74,15 +76,49 @@ const workspaceTabs: {
 ];
 
 const guideTourTopics: {
-  id: GuideTopicId;
+  id: GuideTopicId | "welcome";
   title: string;
   description: string;
   details: string;
   targetTab?: WorkspaceTab;
   icon: LucideIcon;
-  targetId: string;
-  position: "right" | "left" | "top" | "bottom";
+  targetId: string | "center";
+  position: "right" | "left" | "top" | "bottom" | "center";
+  width?: number;
+  capabilities?: { icon: React.ReactNode; title: string; desc: string }[];
 }[] = [
+  {
+    id: "welcome",
+    title: "Welcome to SPADACE GeoPlus",
+    description: "Your enterprise-grade spatial analysis and mapping platform.",
+    details: "GeoPlus provides advanced geospatial visualization, analysis, and data management in the browser. This quick tour will guide you through the core interface components to help you get started.",
+    icon: Sparkles,
+    targetId: "center",
+    position: "center",
+    width: 620,
+    capabilities: [
+      {
+        icon: <Layers3 className="size-4" />,
+        title: "High-Performance Rendering",
+        desc: "Visualize millions of points and complex polygons instantly using WebGL-accelerated rendering.",
+      },
+      {
+        icon: <Database className="size-4" />,
+        title: "Universal Format Support",
+        desc: "Drag and drop GeoJSON, Shapefiles, PMTiles, COGs, Geoparquet, and Zarr directly into the browser.",
+      },
+      {
+        icon: <Wrench className="size-4" />,
+        title: "Advanced Spatial Analysis",
+        desc: "Perform client-side buffering, clipping, and intersections powered by DuckDB WASM.",
+      },
+      {
+        icon: <Sparkles className="size-4" />,
+        title: "AI-Powered Insights",
+        desc: "Use natural language to interrogate spatial attributes and automatically generate SQL queries.",
+      }
+    ]
+  },
   {
     id: "sidebar",
     title: "Sidebar Control Center",
@@ -240,43 +276,92 @@ const shouldUseDuckDbForLayer = (layer: GeoPlusLayerItem) => getLayerSourceFeatu
 const inferDerivedLayerType = (featureCollection: GeoJSON.FeatureCollection) =>
   featureCollection.features.every((feature) => feature.geometry?.type === "Point") ? "scatterplot" : "geojson";
 
+const getPrimitivePropertyFieldNames = (featureCollection: GeoJSON.FeatureCollection): string[] => {
+  const fieldNames = new Set<string>();
+  for (const feature of featureCollection.features) {
+    const properties =
+      feature.properties && typeof feature.properties === "object" && !Array.isArray(feature.properties)
+        ? (feature.properties as Record<string, unknown>)
+        : null;
+    if (!properties) {
+      continue;
+    }
+    for (const [key, value] of Object.entries(properties)) {
+      if (value === null || value === undefined) {
+        continue;
+      }
+      if (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        typeof value === "boolean" ||
+        (key === "media" && Array.isArray(value))
+      ) {
+        fieldNames.add(key);
+      }
+    }
+  }
+  return [...fieldNames];
+};
+
 const buildDerivedAnalysisLayer = (args: {
   sourceLayer: GeoPlusLayerItem;
   featureCollection: GeoJSON.FeatureCollection;
-  operation: "buffer" | "clip";
+  operation: GeoPlusSpatialAnalysisOperation;
   summary: string;
   clipLayerName?: string;
   bufferDistance?: number;
   bufferUnit?: string;
 }): GeoPlusLayerItem => {
   const { sourceLayer, featureCollection, operation, summary, clipLayerName, bufferDistance, bufferUnit } = args;
-  const operationSuffix =
-    operation === "buffer"
-      ? `Buffer ${bufferDistance ?? ""} ${bufferUnit ?? ""}`.trim()
-      : `Clip ${clipLayerName ? `to ${clipLayerName}` : "Extent"}`;
+
+  let operationSuffix = "";
+  let stylePreset: GeoPlusLayerItem["stylePreset"] = "sky";
+
+  switch (operation) {
+    case "buffer":
+      operationSuffix = `Buffer ${bufferDistance ?? ""} ${bufferUnit ?? ""}`.trim();
+      stylePreset = "amber";
+      break;
+    case "clip":
+      operationSuffix = `Clip ${clipLayerName ? `to ${clipLayerName}` : "Extent"}`;
+      stylePreset = "sky";
+      break;
+    case "simplify":
+      operationSuffix = "Simplified";
+      stylePreset = "lime";
+      break;
+    case "smooth":
+      operationSuffix = "Smoothed";
+      stylePreset = "violet";
+      break;
+    case "fix_geometry":
+      operationSuffix = "Fixed Geometry";
+      stylePreset = "teal";
+      break;
+  }
 
   return {
     id: `${Date.now()}-${Math.round(Math.random() * 1000)}`,
     name: `${sourceLayer.name} ${operationSuffix}`.trim(),
     sourceMode: "analysis",
-    engine: "deck",
-    layerType: inferDerivedLayerType(featureCollection),
-    rendererPreference: "deck",
-    layerTypePreference: "geojson",
+    engine: sourceLayer.engine,
+    layerType: sourceLayer.layerType,
+    rendererPreference: sourceLayer.rendererPreference,
+    layerTypePreference: sourceLayer.layerTypePreference,
     rawInlineData: featureCollection,
     inlineData: featureCollection,
     detectionSummary: summary,
     visible: true,
     opacity: 0.82,
-    stylePreset: operation === "buffer" ? "amber" : "sky",
-    styleConfig: undefined,
-    labelEnabled: false,
-    labelField: undefined,
+    stylePreset,
+    styleConfig: sourceLayer.styleConfig ? { ...sourceLayer.styleConfig } : undefined,
+    labelEnabled: sourceLayer.labelEnabled,
+    labelField: sourceLayer.labelField,
   };
 };
 
-export function GeoPlusShell() {
-  const { settings } = useAppSettings();
+export function GeoPlusShell({ initialLayers = [] }: { initialLayers?: GeoPlusLayerItem[] } = {}) {
+  const { settings, updateSettings, isLoaded } = useAppSettings();
   const shellRef = useRef<HTMLDivElement | null>(null);
   const sidebarWrapperRef = useRef<HTMLDivElement | null>(null);
   const themeModeRef = useRef<"dark" | "light" | null>(null);
@@ -286,7 +371,7 @@ export function GeoPlusShell() {
   const [leftSafeArea, setLeftSafeArea] = useState("0.75rem");
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("layers");
   const [sessionBasemapId, setSessionBasemapId] = useState<GeoPlusBasemapId | null>(null);
-  const [layers, setLayers] = useState<GeoPlusLayerItem[]>([]);
+  const [layers, setLayers] = useState<GeoPlusLayerItem[]>(initialLayers);
   const [selectedToolsLayerId, setSelectedToolsLayerId] = useState("");
   const [openToolRequest, setOpenToolRequest] = useState<{ toolId: string; nonce: number } | null>(null);
   const [bottomPanelTab, setBottomPanelTab] = useState<"table" | "shell" | "none">("none");
@@ -300,6 +385,10 @@ export function GeoPlusShell() {
 
   const activeTabContent = workspaceTabs.find((tab) => tab.id === activeTab) ?? workspaceTabs[0];
   const queryableLayers = useMemo(() => layers.filter((layer) => getLayerSourceFeatureCollection(layer) !== null), [layers]);
+  const hasActiveLayerFilters = useMemo(
+    () => layers.some((layer) => (layer.duckDbWhereClause ?? "").trim().length > 0),
+    [layers],
+  );
   const selectedToolsLayer = useMemo(
     () => queryableLayers.find((layer) => layer.id === selectedToolsLayerId) ?? queryableLayers[0] ?? null,
     [queryableLayers, selectedToolsLayerId],
@@ -320,6 +409,30 @@ export function GeoPlusShell() {
     }
     setActiveHelpDialog(dialogId);
   }, [handleGuideStepChange]);
+
+  useEffect(() => {
+    if (initialLayers.length > 0) {
+      hydrateDashboardLayers(initialLayers).then((hydrated) => {
+        setLayers(hydrated);
+      }).catch(console.error);
+    }
+  }, [initialLayers]);
+
+  useEffect(() => {
+    // Check if the user has seen the welcome tour. If not, auto-launch it.
+    const TOUR_SEEN_KEY = "spadace_geoplus_tour_seen";
+    if (typeof window !== "undefined") {
+      const hasSeenTour = localStorage.getItem(TOUR_SEEN_KEY);
+      if (!hasSeenTour) {
+        // Small delay to ensure the UI is fully rendered before showing the welcome modal
+        const timer = setTimeout(() => {
+          openHelpDialog("guide");
+          localStorage.setItem(TOUR_SEEN_KEY, "true");
+        }, 1500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [openHelpDialog]);
 
   const goToNextGuideTopic = useCallback(() => {
     handleGuideStepChange(Math.min(activeGuideTopicIndex + 1, guideTourTopics.length - 1));
@@ -472,10 +585,12 @@ export function GeoPlusShell() {
   const runLayerAnalysis = useCallback(
     async (args: {
       sourceLayerId: string;
-      operation: "buffer" | "clip";
+      operation: GeoPlusSpatialAnalysisOperation;
       bufferDistance?: number;
       bufferUnit?: "meters" | "kilometers" | "miles";
       clipLayerId?: string;
+      tolerance?: number;
+      iterations?: number;
     }) => {
       const sourceLayer = layersRef.current.find((layer) => layer.id === args.sourceLayerId);
       const sourceFeatureCollection = sourceLayer ? getLayerSourceFeatureCollection(sourceLayer) : null;
@@ -491,6 +606,8 @@ export function GeoPlusShell() {
         bufferDistance: args.bufferDistance,
         bufferUnit: args.bufferUnit,
         clipFeatureCollection: clipFeatureCollection ?? undefined,
+        tolerance: args.tolerance,
+        iterations: args.iterations,
       });
 
       const derivedLayer = buildDerivedAnalysisLayer({
@@ -514,7 +631,6 @@ export function GeoPlusShell() {
     },
     [applyDuckDbFilter, settings.autoZoomToLayers],
   );
-
   const openLayerTableInToolsTab = useCallback((layerId: string) => {
     setSelectedToolsLayerId(layerId);
     setBottomPanelTab("table");
@@ -600,6 +716,49 @@ export function GeoPlusShell() {
     };
   }, []);
 
+  const handleSaveDrawingsAsLayer = useCallback((name: string, features: GeoJSON.FeatureCollection) => {
+    const interactionFields = getPrimitivePropertyFieldNames(features);
+    const layerType = inferDerivedLayerType(features);
+    const newLayer: GeoPlusLayerItem = {
+      id: `${Date.now()}-${Math.round(Math.random() * 1000)}`,
+      name: name.trim() || "Drawn Layer",
+      sourceMode: "gis-paste",
+      engine: "deck",
+      layerType,
+      rendererPreference: "deck",
+      layerTypePreference: "geojson",
+      rawInlineData: features,
+      inlineData: features,
+      detectionSummary: `Draw tool · ${features.features.length} features`,
+      visible: true,
+      opacity: 0.85,
+      stylePreset: "emerald",
+      styleConfig: layerType === "scatterplot" ? { pointRadius: 10 } : undefined,
+      labelEnabled: false,
+      labelField: undefined,
+      interactionConfig: interactionFields.length
+        ? {
+            tooltipEnabled: true,
+            popupEnabled: true,
+            tooltipFields: interactionFields,
+            popupFields: interactionFields,
+          }
+        : {
+            tooltipEnabled: true,
+            popupEnabled: true,
+          },
+    };
+    
+    setLayers((prev) => [...prev, newLayer]);
+    if (settings.autoZoomToLayers) {
+      setZoomToLayerRequest({
+        layerId: newLayer.id,
+        nonce: Date.now(),
+      });
+    }
+    void applyDuckDbFilter(newLayer.id, "", undefined, features);
+  }, [applyDuckDbFilter, settings.autoZoomToLayers]);
+
   return (
     <div
       ref={shellRef}
@@ -614,12 +773,14 @@ export function GeoPlusShell() {
         <GeoPlusMap
           selectedBasemapId={selectedBasemapId}
           layers={layers}
+          settings={settings}
           zoomToLayerRequest={zoomToLayerRequest}
           zoomToFeatureRequest={zoomToFeatureRequest}
           onToggleLayerVisibility={(layerId) => {
             setLayers((previous) => previous.map((l) => (l.id === layerId ? { ...l, visible: !l.visible } : l)));
           }}
-          onClearFilters={handleClearAllFilters}
+          onClearFilters={hasActiveLayerFilters ? handleClearAllFilters : undefined}
+          onSaveDrawLayer={handleSaveDrawingsAsLayer}
         />
       </div>
 
@@ -862,7 +1023,7 @@ export function GeoPlusShell() {
               ) : activeTab === "ai" ? (
                 <AiAssistantPanel layers={layers} />
               ) : activeTab === "settings" ? (
-                <SettingsPanel />
+                <SettingsPanel settings={settings} updateSettings={updateSettings} isLoaded={isLoaded} />
               ) : (
                 <div className="space-y-2 px-5 py-3">
                   <p className="text-sm font-semibold text-foreground">{activeTabContent.title}</p>
@@ -898,6 +1059,13 @@ export function GeoPlusShell() {
       <BugFixDialog 
         isOpen={activeHelpDialog === "bug-fix-form"} 
         onOpenChange={(isOpen) => setActiveHelpDialog(isOpen ? "bug-fix-form" : null)} 
+      />
+
+      <SaveDashboardDialog
+        isOpen={activeHelpDialog === "save-dashboard"}
+        onOpenChange={(isOpen) => setActiveHelpDialog(isOpen ? "save-dashboard" : null)}
+        layers={layers}
+        settings={settings}
       />
 
       <AnnouncementsDialog 

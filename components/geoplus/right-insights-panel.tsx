@@ -284,7 +284,7 @@ export function GeoPlusRightInsightsPanel({ isVisible, layer, isTablePanelVisibl
 
         <div className="mt-2 flex cursor-move items-center justify-between border-b border-border/80 px-4 py-2" onMouseDown={handleMouseDown}>
           <div className="flex items-center gap-2">
-            <GripHorizontal className="size-4 text-muted-foreground" />
+            <GripHorizontal className="size-4 text-muted-foreground transition-colors hover:text-accent" />
             <div>
               <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-foreground/90">Insights</p>
               <p className="w-56 truncate text-xs text-foreground">{layer?.name ?? "No Dataset Selected"}</p>

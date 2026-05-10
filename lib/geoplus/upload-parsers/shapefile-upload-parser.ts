@@ -1,6 +1,6 @@
 import shp from "shpjs";
 
-import type { UploadFileParser } from "@/lib/geoplus/upload-parsers/types";
+import type { UploadFileParser, ParsedUploadLayer } from "@/lib/geoplus/upload-parsers/types";
 
 type FeatureCollection = GeoJSON.FeatureCollection;
 
@@ -22,55 +22,63 @@ const inferLayerType = (featureCollection: FeatureCollection) => {
   return hasOnlyPoints ? "scatterplot" : "geojson";
 };
 
-const normalizeShapefileResult = (value: unknown): FeatureCollection => {
+const normalizeShapefileResult = (value: unknown): ParsedUploadLayer[] => {
   const singleCollection = asFeatureCollection(value);
   if (singleCollection) {
-    return singleCollection;
+    return [
+      {
+        formatLabel: "Shapefile",
+        layerType: inferLayerType(singleCollection),
+        inlineData: singleCollection,
+        readyMessage: "Shapefile parsed and ready to add.",
+      }
+    ];
   }
 
   if (!Array.isArray(value)) {
     throw new Error("Shapefile ZIP did not contain a valid feature layer.");
   }
 
-  const mergedFeatures: GeoJSON.Feature[] = [];
+  const parsedLayers: ParsedUploadLayer[] = [];
 
   for (const layer of value) {
     const collection = asFeatureCollection(layer);
-    if (!collection) {
+    if (!collection || collection.features.length === 0) {
       continue;
     }
 
-    const sourceLayerName = typeof (layer as { fileName?: unknown }).fileName === "string" ? (layer as { fileName: string }).fileName : null;
+    const sourceLayerName = typeof (layer as { fileName?: unknown }).fileName === "string" ? (layer as { fileName: string }).fileName : "Shapefile";
+    
+    // Still assign source_layer property just in case it's helpful
     for (const feature of collection.features) {
       const properties = (feature.properties ?? {}) as Record<string, unknown>;
       if (sourceLayerName && !Object.prototype.hasOwnProperty.call(properties, "source_layer")) {
         properties.source_layer = sourceLayerName;
       }
-      mergedFeatures.push({
-        ...feature,
-        properties,
-      });
+      feature.properties = properties;
     }
+
+    parsedLayers.push({
+      layerName: sourceLayerName,
+      formatLabel: "Shapefile",
+      layerType: inferLayerType(collection),
+      inlineData: collection,
+      readyMessage: `Shapefile layer "${sourceLayerName}" parsed and ready to add.`,
+    });
   }
 
-  if (mergedFeatures.length === 0) {
+  if (parsedLayers.length === 0) {
     throw new Error("No features found in shapefile ZIP.");
   }
 
-  return {
-    type: "FeatureCollection",
-    features: mergedFeatures,
-  };
+  return parsedLayers;
 };
 
 export const parseShapefileUpload: UploadFileParser = async (file) => {
-  const parsed = await shp(await file.arrayBuffer());
-  const featureCollection = normalizeShapefileResult(parsed);
+  if (file.name.toLowerCase().endsWith(".shp")) {
+    throw new Error("A standalone .shp file is not sufficient. Please upload a .zip archive containing the .shp, .shx, .dbf, and .prj files.");
+  }
 
-  return {
-    formatLabel: "Shapefile",
-    layerType: inferLayerType(featureCollection),
-    inlineData: featureCollection,
-    readyMessage: "Shapefile parsed and ready to add.",
-  };
+  const parsed = await shp(await file.arrayBuffer());
+  return normalizeShapefileResult(parsed);
 };

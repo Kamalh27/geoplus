@@ -55,7 +55,7 @@ export const getFileExtension = (fileName: string) => {
   return extension ? `.${extension}` : "";
 };
 
-export const parseUploadedSpatialFile = async (file: File): Promise<ParsedUploadLayer> => {
+export const parseUploadedSpatialFile = async (file: File): Promise<ParsedUploadLayer[]> => {
   const fileName = file.name.toLowerCase();
   let extension = getFileExtension(file.name);
   

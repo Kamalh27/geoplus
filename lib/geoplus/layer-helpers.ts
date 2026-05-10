@@ -109,10 +109,6 @@ export const getLayerLabelFieldOptions = (layer: GeoPlusLayerItem) => {
     }
   }
 
-  for (const column of layer.duckDbColumns ?? []) {
-    addField(column);
-  }
-
   return [...fieldsByCanonical.values()].sort((left, right) => {
     const baseCompare = left.localeCompare(right, undefined, { sensitivity: "base" });
     if (baseCompare !== 0) {

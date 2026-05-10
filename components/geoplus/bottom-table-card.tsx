@@ -1139,8 +1139,8 @@ export function GeoPlusBottomTableCard({
           }
         }}
       >
-        <DialogContent className="max-w-3xl border-border/80 bg-background">
-          <DialogHeader>
+        <DialogContent className="w-[min(72rem,calc(100vw-1rem))] max-w-none h-[min(86vh,52rem)] overflow-hidden border-border/80 bg-background p-0 gap-0 flex flex-col">
+          <DialogHeader className="shrink-0 border-b border-border/70 px-5 py-4">
             <DialogTitle className="inline-flex items-center gap-2 text-foreground">
               <ChartNoAxesColumn className="size-4 text-accent" />
               {chartColumn ? `${formatColumnLabel(chartColumn)} Distribution` : "Column Distribution"}
@@ -1148,104 +1148,108 @@ export function GeoPlusBottomTableCard({
             <DialogDescription>Value counts are computed from the currently filtered table rows. Change chart type, style, and export.</DialogDescription>
           </DialogHeader>
 
-          {!chartColumn || chartData.length === 0 ? (
-            <div className="rounded-lg border border-border/70 bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
-              No chart data available for this column.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/70 bg-muted/25 p-3 md:grid-cols-5">
-                <label className="flex flex-col gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  Chart Type
-                  <select
-                    value={chartType}
-                    onChange={(event) => setChartType(event.target.value as ChartType)}
-                    className="h-8 rounded border border-input bg-background px-2 text-sm font-medium normal-case tracking-normal text-foreground outline-none focus:border-accent/70"
+          <div className="geoplus-panel-scroll flex-1 min-h-0 overflow-y-auto p-5">
+            {!chartColumn || chartData.length === 0 ? (
+              <div className="rounded-lg border border-border/70 bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
+                No chart data available for this column.
+              </div>
+            ) : (
+              <div className="space-y-3 min-w-0">
+                <div className="geoplus-panel-scroll overflow-x-auto">
+                  <div className="grid min-w-[38rem] grid-cols-2 gap-2 rounded-lg border border-border/70 bg-muted/25 p-3 md:grid-cols-5">
+                    <label className="flex flex-col gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Chart Type
+                      <select
+                        value={chartType}
+                        onChange={(event) => setChartType(event.target.value as ChartType)}
+                        className="h-8 rounded border border-input bg-background px-2 text-sm font-medium normal-case tracking-normal text-foreground outline-none focus:border-accent/70"
+                      >
+                        {chartTypeOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="flex flex-col gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Palette
+                      <select
+                        value={chartPalette}
+                        onChange={(event) => setChartPalette(event.target.value as ChartPaletteId)}
+                        className="h-8 rounded border border-input bg-background px-2 text-sm font-medium normal-case tracking-normal text-foreground outline-none focus:border-accent/70"
+                      >
+                        {Object.entries(chartPalettes).map(([paletteId, paletteConfig]) => (
+                          <option key={paletteId} value={paletteId}>
+                            {paletteConfig.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="flex flex-col gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                      Max Items
+                      <input
+                        type="number"
+                        min={3}
+                        max={20}
+                        value={normalizedChartMaxItems}
+                        onChange={(event) => {
+                          const parsedValue = Number(event.target.value);
+                          if (!Number.isFinite(parsedValue)) {
+                            return;
+                          }
+                          setChartMaxItems(Math.max(3, Math.min(20, Math.round(parsedValue))));
+                        }}
+                        className="h-8 rounded border border-input bg-background px-2 text-sm font-medium normal-case tracking-normal text-foreground outline-none focus:border-accent/70"
+                      />
+                    </label>
+
+                    <label className="col-span-2 flex items-center gap-2 self-end rounded border border-border/70 bg-background/70 px-2 py-1.5 text-sm text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={chartShowValues}
+                        onChange={(event) => setChartShowValues(event.target.checked)}
+                        className="size-3.5 accent-[var(--accent)]"
+                      />
+                      Show Values
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 bg-card/65 px-3 py-2 text-sm">
+                  <span className="text-muted-foreground">
+                    Showing top {chartDisplayData.length} of {chartData.length} categories
+                  </span>
+                  <button
+                    type="button"
+                    onClick={downloadCurrentChart}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border/75 bg-background px-2.5 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-foreground transition hover:border-accent/60 hover:text-accent"
                   >
-                    {chartTypeOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    <Download className="size-3.5" />
+                    Download PNG
+                  </button>
+                </div>
 
-                <label className="flex flex-col gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  Palette
-                  <select
-                    value={chartPalette}
-                    onChange={(event) => setChartPalette(event.target.value as ChartPaletteId)}
-                    className="h-8 rounded border border-input bg-background px-2 text-sm font-medium normal-case tracking-normal text-foreground outline-none focus:border-accent/70"
-                  >
-                    {Object.entries(chartPalettes).map(([paletteId, paletteConfig]) => (
-                      <option key={paletteId} value={paletteId}>
-                        {paletteConfig.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="flex flex-col gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  Max Items
-                  <input
-                    type="number"
-                    min={3}
-                    max={20}
-                    value={normalizedChartMaxItems}
-                    onChange={(event) => {
-                      const parsedValue = Number(event.target.value);
-                      if (!Number.isFinite(parsedValue)) {
-                        return;
-                      }
-                      setChartMaxItems(Math.max(3, Math.min(20, Math.round(parsedValue))));
-                    }}
-                    className="h-8 rounded border border-input bg-background px-2 text-sm font-medium normal-case tracking-normal text-foreground outline-none focus:border-accent/70"
+                <div className="geoplus-panel-scroll max-w-full overflow-auto rounded-lg border border-border/70 bg-background">
+                  <GeoPlusEchartsInsightChart
+                    ref={chartPreviewRef}
+                    data={chartDisplayData}
+                    chartType={chartType}
+                    paletteId={chartPalette}
+                    showValues={chartShowValues}
+                    title={`${formatColumnLabel(chartColumn)} Distribution`}
+                    isDarkTheme={isDarkTheme}
+                    minWidth={860}
                   />
-                </label>
+                </div>
 
-                <label className="col-span-2 flex items-center gap-2 self-end rounded border border-border/70 bg-background/70 px-2 py-1.5 text-sm text-foreground">
-                  <input
-                    type="checkbox"
-                    checked={chartShowValues}
-                    onChange={(event) => setChartShowValues(event.target.checked)}
-                    className="size-3.5 accent-[var(--accent)]"
-                  />
-                  Show Values
-                </label>
+                <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                  Tip: Use search and filter popovers first, then generate charts from narrowed data.
+                </div>
               </div>
-
-              <div className="flex items-center justify-between rounded-lg border border-border/70 bg-card/65 px-3 py-2 text-sm">
-                <span className="text-muted-foreground">
-                  Showing top {chartDisplayData.length} of {chartData.length} categories
-                </span>
-                <button
-                  type="button"
-                  onClick={downloadCurrentChart}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border/75 bg-background px-2.5 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-foreground transition hover:border-accent/60 hover:text-accent"
-                >
-                  <Download className="size-3.5" />
-                  Download PNG
-                </button>
-              </div>
-
-              <div className="geoplus-panel-scroll overflow-auto rounded-lg border border-border/70 bg-background">
-                <GeoPlusEchartsInsightChart
-                  ref={chartPreviewRef}
-                  data={chartDisplayData}
-                  chartType={chartType}
-                  paletteId={chartPalette}
-                  showValues={chartShowValues}
-                  title={`${formatColumnLabel(chartColumn)} Distribution`}
-                  isDarkTheme={isDarkTheme}
-                  minWidth={860}
-                />
-              </div>
-
-              <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                Tip: Use search and filter popovers first, then generate charts from narrowed data.
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </aside>

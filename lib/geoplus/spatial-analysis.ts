@@ -1,3 +1,4 @@
+import * as turf from "@turf/turf";
 import type { GeoPlusSpatialAnalysisOperation, GeoPlusSpatialBufferUnit } from "@/components/geoplus/types";
 
 type BBox = [minLongitude: number, minLatitude: number, maxLongitude: number, maxLatitude: number];
@@ -9,6 +10,8 @@ export type RunBasicSpatialAnalysisArgs = {
   bufferDistance?: number;
   bufferUnit?: GeoPlusSpatialBufferUnit;
   clipFeatureCollection?: GeoJSON.FeatureCollection;
+  tolerance?: number;
+  iterations?: number;
 };
 
 export type BasicSpatialAnalysisResult = {
@@ -612,11 +615,174 @@ const runClipAnalysis = (args: RunBasicSpatialAnalysisArgs): BasicSpatialAnalysi
   };
 };
 
+const runSimplifyAnalysis = (args: RunBasicSpatialAnalysisArgs): BasicSpatialAnalysisResult => {
+  const tolerance = args.tolerance ?? 0.01;
+  const features = (args.sourceFeatureCollection.features ?? [])
+    .map((feature) => {
+      try {
+        const simplified = turf.simplify(feature, { tolerance, highQuality: true });
+        return {
+          ...simplified,
+          properties: {
+            ...cloneProperties(feature.properties),
+            analysis_operation: "simplify",
+            analysis_tolerance: tolerance,
+          },
+        } as GeoJSON.Feature;
+      } catch (e) {
+        console.error("Simplify failed for feature", feature.id, e);
+        return null;
+      }
+    })
+    .filter((feature): feature is GeoJSON.Feature => feature !== null);
+
+  return {
+    featureCollection: {
+      type: "FeatureCollection",
+      features,
+    },
+    summary: `Simplified ${features.length} feature${features.length === 1 ? "" : "s"} with tolerance ${tolerance}.`,
+  };
+};
+
+const sanitizePolygonForRendering = (
+  feature: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>,
+): GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon> | null => {
+  let cleaned = turf.cleanCoords(feature, { mutate: false }) as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
+  cleaned = turf.rewind(cleaned, { reverse: false, mutate: false }) as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
+  if (!turf.booleanValid(cleaned)) {
+    return null;
+  }
+
+  const area = turf.area(cleaned);
+  if (!Number.isFinite(area) || area <= 0) {
+    return null;
+  }
+
+  return cleaned;
+};
+
+const runSmoothAnalysis = (args: RunBasicSpatialAnalysisArgs): BasicSpatialAnalysisResult => {
+  const iterations = args.iterations ?? 2;
+  const features = (args.sourceFeatureCollection.features ?? [])
+    .map((feature) => {
+      try {
+        let smoothed: GeoJSON.Feature | null = null;
+        if (feature.geometry.type === "LineString") {
+          // turf.bezierSpline doesn't use iterations directly in the same way, but we can pass it as resolution if we want, or just stick to polygonSmooth.
+          // For simplicity, we apply it to polygonSmooth.
+          smoothed = turf.bezierSpline(feature as GeoJSON.Feature<GeoJSON.LineString>);
+        } else if (feature.geometry.type === "Polygon" || feature.geometry.type === "MultiPolygon") {
+          const smoothedResult = turf.polygonSmooth(feature as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>, { iterations });
+          const validSmoothedGeometries = smoothedResult.features
+            .map((smoothedFeature) =>
+              sanitizePolygonForRendering(smoothedFeature as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>),
+            )
+            .filter((candidate): candidate is GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon> => candidate !== null)
+            .flatMap((candidate) =>
+              candidate.geometry.type === "Polygon" ? [candidate.geometry.coordinates] : candidate.geometry.coordinates,
+            );
+
+          if (validSmoothedGeometries.length === 1) {
+            smoothed = {
+              type: "Feature",
+              properties: {},
+              geometry: {
+                type: "Polygon",
+                coordinates: validSmoothedGeometries[0],
+              },
+            };
+          } else if (validSmoothedGeometries.length > 1) {
+            smoothed = {
+              type: "Feature",
+              properties: {},
+              geometry: {
+                type: "MultiPolygon",
+                coordinates: validSmoothedGeometries,
+              },
+            };
+          } else {
+            smoothed = sanitizePolygonForRendering(feature as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>);
+          }
+        } else {
+          smoothed = { ...feature } as GeoJSON.Feature;
+        }
+
+        if (!smoothed) return null;
+
+        return {
+          ...smoothed,
+          properties: {
+            ...cloneProperties(feature.properties),
+            analysis_operation: "smooth",
+            analysis_iterations: iterations,
+          },
+        } as GeoJSON.Feature;
+      } catch (e) {
+        console.error("Smooth failed for feature", feature.id, e);
+        return null;
+      }
+    })
+    .filter((feature): feature is GeoJSON.Feature => feature !== null);
+
+  return {
+    featureCollection: {
+      type: "FeatureCollection",
+      features,
+    },
+    summary: `Smoothed ${features.length} feature${features.length === 1 ? "" : "s"} with ${iterations} iteration${iterations === 1 ? "" : "s"}.`,
+  };
+};
+
+const runFixGeometryAnalysis = (args: RunBasicSpatialAnalysisArgs): BasicSpatialAnalysisResult => {
+  const features = (args.sourceFeatureCollection.features ?? [])
+    .map((feature) => {
+      try {
+        // Rewind ensures right-hand rule for polygons
+        const fixed = turf.rewind(feature, { reverse: false, mutate: false });
+        return {
+          ...fixed,
+          properties: {
+            ...cloneProperties(feature.properties),
+            analysis_operation: "fix_geometry",
+            ...(args.tolerance !== undefined && { analysis_tolerance: args.tolerance }),
+            ...(args.iterations !== undefined && { analysis_iterations: args.iterations }),
+          },
+        } as GeoJSON.Feature;
+      } catch (e) {
+        console.error("Fix geometry failed for feature", feature.id, e);
+        return null;
+      }
+    })
+    .filter((feature): feature is GeoJSON.Feature => feature !== null);
+
+  return {
+    featureCollection: {
+      type: "FeatureCollection",
+      features,
+    },
+    summary: `Fixed geometry for ${features.length} feature${features.length === 1 ? "" : "s"}.`,
+  };
+};
+
 export const runBasicSpatialAnalysis = (args: RunBasicSpatialAnalysisArgs): BasicSpatialAnalysisResult => {
   const sourceFeatures = args.sourceFeatureCollection.features ?? [];
   if (sourceFeatures.length === 0) {
     throw new Error("Add a non-empty vector layer before running analysis.");
   }
 
-  return args.operation === "buffer" ? runBufferAnalysis(args) : runClipAnalysis(args);
+  switch (args.operation) {
+    case "buffer":
+      return runBufferAnalysis(args);
+    case "clip":
+      return runClipAnalysis(args);
+    case "simplify":
+      return runSimplifyAnalysis(args);
+    case "smooth":
+      return runSmoothAnalysis(args);
+    case "fix_geometry":
+      return runFixGeometryAnalysis(args);
+    default:
+      throw new Error(`Unsupported spatial analysis operation: ${args.operation}`);
+  }
 };

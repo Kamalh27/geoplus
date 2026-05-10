@@ -11,8 +11,10 @@ export type GuidedTourStep = {
   title: string;
   description: string;
   details: string;
-  targetId: string;
-  position: "right" | "left" | "top" | "bottom";
+  targetId: string | "center";
+  position: "right" | "left" | "top" | "bottom" | "center";
+  width?: number;
+  capabilities?: { icon: React.ReactNode; title: string; desc: string }[];
 };
 
 type GuidedTourProps = {
@@ -36,14 +38,15 @@ export function GuidedTour({
 }: GuidedTourProps) {
   const [mounted, setMounted] = useState(false);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
-  const [popoverSize, setPopoverSize] = useState({ width: 340, height: 250 });
+  const activeStep = steps[activeStepIndex];
+  const [popoverSize, setPopoverSize] = useState({ width: activeStep?.width || 360, height: 250 });
   const [isDarkTheme, setIsDarkTheme] = useState(() => {
     if (typeof document === "undefined") {
       return true;
     }
     return document.documentElement.classList.contains("dark");
   });
-  const activeStep = steps[activeStepIndex];
+  
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -68,6 +71,10 @@ export function GuidedTour({
 
   const updateTargetRect = useCallback(() => {
     if (!activeStep) return;
+    if (activeStep.targetId === "center" || activeStep.position === "center") {
+      setTargetRect(null);
+      return;
+    }
     const element = document.getElementById(activeStep.targetId);
     if (element) {
       setTargetRect(element.getBoundingClientRect());
@@ -114,7 +121,9 @@ export function GuidedTour({
   const isLast = activeStepIndex === steps.length - 1;
 
   const getPopoverStyle = (): React.CSSProperties => {
-    if (!targetRect) return { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
+    if (activeStep.position === "center" || !targetRect) {
+      return { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
+    }
 
     const gap = 16;
     const padding = 16;
@@ -161,7 +170,7 @@ export function GuidedTour({
         <defs>
           <mask id="guided-tour-mask">
             <rect width="100%" height="100%" fill="white" />
-            {targetRect && (
+            {targetRect && activeStep.position !== "center" && (
               <rect
                 x={targetRect.x - 4}
                 y={targetRect.y - 4}
@@ -184,7 +193,7 @@ export function GuidedTour({
       </svg>
 
       {/* Highlight ring */}
-      {targetRect && (
+      {targetRect && activeStep.position !== "center" && (
         <div
           className="absolute rounded-xl border-2 border-accent shadow-[0_0_0_4px_rgba(20,212,159,0.2)] transition-all duration-300 dark:shadow-[0_0_0_4px_rgba(20,212,159,0.3)]"
           style={{
@@ -199,57 +208,72 @@ export function GuidedTour({
       {/* Popover Panel */}
       <div
         ref={popoverRef}
-        className="absolute pointer-events-auto w-[340px] max-w-[90vw] transition-all duration-300"
-        style={getPopoverStyle()}
+        className="absolute pointer-events-auto max-w-[95vw] transition-all duration-300"
+        style={{ ...getPopoverStyle(), width: activeStep.width || 360 }}
       >
-        <div className="bg-card border border-border rounded-2xl shadow-2xl overflow-hidden ring-1 ring-black/5 dark:ring-white/10">
-          <header className="px-4 pt-4 flex justify-between items-start">
-            <div className="space-y-1">
+        <div className="bg-card border border-border rounded-2xl shadow-2xl overflow-hidden ring-1 ring-black/5 dark:ring-white/10 flex flex-col max-h-[85vh]">
+          <header className="px-5 pt-5 pb-2 flex justify-between items-start shrink-0">
+            <div className="space-y-1 pr-4">
               <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-accent">
                 Step {activeStepIndex + 1} of {steps.length}
               </p>
-              <h3 className="text-lg font-semibold tracking-tight text-foreground">
+              <h3 className="text-xl font-semibold tracking-tight text-foreground">
                 {activeStep.title}
               </h3>
             </div>
             <Button
               variant="ghost"
               size="icon-sm"
-              className="rounded-full -mt-1 -mr-1 text-muted-foreground hover:bg-muted"
+              className="rounded-full shrink-0 -mt-1 -mr-2 text-muted-foreground hover:bg-muted"
               onClick={onClose}
             >
               <X className="size-4" />
             </Button>
           </header>
 
-          <div className="px-4 py-3 space-y-3">
-            <p className="text-sm text-muted-foreground leading-relaxed">
+          <div className="px-5 py-2 overflow-y-auto geoplus-panel-scroll">
+            <p className="text-[15px] text-muted-foreground leading-relaxed mb-4">
               {activeStep.description}
             </p>
-            <div className="bg-muted/50 rounded-xl p-3 border border-border/50">
-              <p className="text-xs text-foreground/80 leading-normal">
-                {activeStep.details}
-              </p>
-            </div>
+
+            {activeStep.capabilities && activeStep.capabilities.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+                {activeStep.capabilities.map((cap, i) => (
+                  <div key={i} className="flex flex-col p-3.5 rounded-xl bg-muted/40 hover:bg-muted/60 transition-colors">
+                     <div className="mb-2.5 h-8 w-8 rounded-lg bg-accent/10 flex items-center justify-center text-accent">
+                       {cap.icon}
+                     </div>
+                     <h4 className="text-sm font-semibold mb-1 text-foreground">{cap.title}</h4>
+                     <p className="text-xs text-muted-foreground leading-relaxed">{cap.desc}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-muted/40 rounded-xl p-3.5 mb-2">
+                <p className="text-[13px] text-foreground/90 leading-relaxed">
+                  {activeStep.details}
+                </p>
+              </div>
+            )}
           </div>
 
-          <footer className="bg-muted/30 px-4 py-3 flex items-center justify-between border-t border-border">
-            <div className="flex gap-1">
+          <footer className="bg-muted/20 px-5 py-3.5 flex items-center justify-between shrink-0">
+            <div className="flex gap-1.5 flex-wrap flex-1 mr-2">
               {steps.map((_, index) => (
                 <button
                   key={index}
                   className={cn(
-                    "size-1.5 rounded-full transition-all",
+                    "h-1.5 rounded-full transition-all shrink-0",
                     index === activeStepIndex
-                      ? "bg-accent w-4"
-                      : "bg-muted hover:bg-muted-foreground/30"
+                      ? "bg-accent w-5"
+                      : "bg-muted-foreground/30 w-1.5 hover:bg-muted-foreground/50"
                   )}
                   onClick={() => onStepClick(index)}
                   aria-label={`Go to step ${index + 1}`}
                 />
               ))}
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 shrink-0">
               <Button
                 variant="ghost"
                 size="sm"

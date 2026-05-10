@@ -3,11 +3,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import maplibregl from "maplibre-gl";
+import MapboxDraw from "@mapbox/mapbox-gl-draw";
+// @ts-ignore
+import DrawRectangle from "mapbox-gl-draw-rectangle-mode";
+// @ts-ignore
+import { DragCircleMode, DirectMode, SimpleSelectMode } from "mapbox-gl-draw-circle";
+import { DragHexagonMode } from "@/lib/geoplus/draw-modes/drag-hexagon-mode";
+import * as turf from "@turf/turf";
 
 import { searchNominatimLocations } from "@/components/geoplus/map-search-service";
 import { detectDarkMode, getBasemapStyle, type GeoPlusBasemapId } from "@/components/geoplus/map-style";
 import type { GeoPlusLayerItem, NominatimSearchResult } from "@/components/geoplus/types";
 import type { AppSettings } from "@/components/geoplus/use-app-settings";
+import type { MediaViewerData } from "./media-viewer-dialog";
 import { buildDeckUserLayers, getGeoJsonLngLatBounds, getLayerLngLatBounds, syncMapLibreUserLayers, MAPLIBRE_LAYER_PREFIX } from "@/lib/geoplus/map-layer-renderers";
 import { humanizeColumnName } from "@/lib/geoplus/duckdb-spatial-analytics";
 import { registerCogProtocol, unregisterCogProtocol } from "@/lib/geoplus/tilesets/cog-maplibre";
@@ -23,6 +31,22 @@ const GLOBE_VIEW_BOUNDS: maplibregl.LngLatBoundsLike = [
   [170, 82],
 ];
 type MapProjectionMode = "flat" | "globe";
+export type DrawMode = "simple_select" | "draw_point" | "draw_line_string" | "draw_polygon" | "draw_rectangle" | "draw_circle" | "draw_hexagon" | "direct_select" | "static";
+export type DrawPurpose = "draw" | "measure";
+
+export type DrawMeasurements = {
+  lengthKm?: number;
+  areaSqM?: number;
+  coordinates?: [number, number];
+};
+
+export type DrawTemplateField = {
+  value: string;
+  type: "string" | "float" | "integer" | "boolean" | "image";
+};
+
+export type DrawTemplate = Record<string, DrawTemplateField>;
+
 const HOVER_HIGHLIGHT_SOURCE_ID = "geoplus-hover-highlight-source";
 const HOVER_HIGHLIGHT_FILL_LAYER_ID = "geoplus-hover-highlight-fill";
 const HOVER_HIGHLIGHT_LINE_LAYER_ID = "geoplus-hover-highlight-line";
@@ -55,25 +79,92 @@ const escapeHtml = (value: unknown) =>
 const resolveFieldLabel = (layer: GeoPlusLayerItem | undefined, field: string) =>
   layer?.interactionConfig?.fieldDisplayNames?.[field]?.trim() || humanizeColumnName(field);
 
+const isMediaString = (val: string): { isMedia: boolean; type: "image" | "video" } => {
+  if (val.startsWith("data:image/")) return { isMedia: true, type: "image" };
+  if (val.startsWith("data:video/")) return { isMedia: true, type: "video" };
+  if (val.match(/\.(jpeg|jpg|gif|png|webp|svg)(\?.*)?$/i)) return { isMedia: true, type: "image" };
+  if (val.match(/\.(mp4|webm|ogg)(\?.*)?$/i)) return { isMedia: true, type: "video" };
+  return { isMedia: false, type: "image" };
+};
+
+const renderHtmlValue = (value: unknown, label: string) => {
+  if (typeof value === "string") {
+    const mediaCheck = isMediaString(value);
+    if (mediaCheck.isMedia) {
+      if (mediaCheck.type === "image") {
+        return `<img src="${escapeHtml(value)}" alt="${escapeHtml(label)}" class="geoplus-popup-media" style="cursor:pointer; max-width:100%; height:auto; max-height:140px; border-radius:6px; object-fit:contain; border:1px solid rgba(148,163,184,0.4); transition:opacity 0.2s;" onmouseover="this.style.opacity=0.9" onmouseout="this.style.opacity=1" data-media-type="image" data-media-title="${escapeHtml(label)}" />`;
+      } else {
+        return `<div class="geoplus-popup-media" style="position:relative; cursor:pointer; display:inline-block;" data-media-type="video" data-media-title="${escapeHtml(label)}" data-media-src="${escapeHtml(value)}">
+          <video src="${escapeHtml(value)}" style="max-width:100%; height:auto; max-height:140px; border-radius:6px; object-fit:contain; border:1px solid rgba(148,163,184,0.4); pointer-events:none;"></video>
+          <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.2); border-radius:6px; transition:background 0.2s;" onmouseover="this.style.background='rgba(0,0,0,0.4)'" onmouseout="this.style.background='rgba(0,0,0,0.2)'">
+            <div style="width:32px; height:32px; border-radius:50%; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; color:white; padding-left:3px;">▶</div>
+          </div>
+        </div>`;
+      }
+    }
+  }
+
+  // Handle media array (unlocked schema)
+  if (Array.isArray(value) && value.length > 0 && value[0] && typeof value[0] === "object" && "data" in value[0]) {
+    return `<div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:2px;">
+      ${value.map((item: any) => {
+        const type = item.type?.startsWith("video/") ? "video" : "image";
+        if (type === "image") {
+          return `<img src="${escapeHtml(item.data)}" alt="${escapeHtml(item.name)}" class="geoplus-popup-media" style="cursor:pointer; width:48px; height:48px; border-radius:4px; object-fit:cover; border:1px solid rgba(148,163,184,0.3);" data-media-type="image" data-media-title="${escapeHtml(item.name)}" />`;
+        } else {
+          return `<div class="geoplus-popup-media" style="position:relative; cursor:pointer; width:48px; height:48px; border-radius:4px; overflow:hidden; border:1px solid rgba(148,163,184,0.3);" data-media-type="video" data-media-title="${escapeHtml(item.name)}" data-media-src="${escapeHtml(item.data)}">
+            <video src="${escapeHtml(item.data)}" style="width:100%; height:100%; object-fit:cover; pointer-events:none;"></video>
+            <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.2);">
+              <div style="width:16px; height:16px; border-radius:50%; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; color:white; font-size:8px; padding-left:1px;">▶</div>
+            </div>
+          </div>`;
+        }
+      }).join("")}
+    </div>`;
+  }
+
+  return escapeHtml(value);
+};
+
 const buildTooltipHtml = (layer: GeoPlusLayerItem | undefined, properties: Record<string, unknown>) => {
   const tooltipFields = layer?.interactionConfig?.tooltipFields;
-  if (tooltipFields && tooltipFields.length > 0) {
-    return tooltipFields
-      .map((field) => `<b>${escapeHtml(resolveFieldLabel(layer, field))}:</b> ${escapeHtml(properties[field] ?? "N/A")}`)
-      .join("<br>");
+  const validTooltipFields = (tooltipFields ?? []).filter((field) => Object.prototype.hasOwnProperty.call(properties, field));
+  if (validTooltipFields.length > 0) {
+    return validTooltipFields
+      .map((field) => {
+        const label = resolveFieldLabel(layer, field);
+        const renderedVal = renderHtmlValue(properties[field], label);
+        const isMedia = (typeof properties[field] === "string" && isMediaString(properties[field]).isMedia) || 
+                        (field === "media" && Array.isArray(properties[field]));
+        if (isMedia) {
+           return `<div style="margin-bottom:6px;"><b style="display:block; margin-bottom:2px;">${escapeHtml(label)}:</b> ${renderedVal}</div>`;
+        }
+        return `<div><b>${escapeHtml(label)}:</b> ${renderedVal}</div>`;
+      })
+      .join("");
   }
 
   const fallbackFields = Object.keys(properties)
     .filter((field) => field !== "layer" && field !== "source")
     .filter((field) => {
       const value = properties[field];
+      if (field === "media" && Array.isArray(value)) return true;
       return value !== null && value !== undefined && typeof value !== "object";
     });
 
   if (fallbackFields.length > 0) {
     return fallbackFields
-      .map((field) => `<b>${escapeHtml(resolveFieldLabel(layer, field))}:</b> ${escapeHtml(properties[field] ?? "N/A")}`)
-      .join("<br>");
+      .map((field) => {
+        const label = resolveFieldLabel(layer, field);
+        const renderedVal = renderHtmlValue(properties[field], label);
+        const isMedia = (typeof properties[field] === "string" && isMediaString(properties[field]).isMedia) || 
+                        (field === "media" && Array.isArray(properties[field]));
+        if (isMedia) {
+           return `<div style="margin-bottom:6px;"><b style="display:block; margin-bottom:2px;">${escapeHtml(label)}:</b> ${renderedVal}</div>`;
+        }
+        return `<div><b>${escapeHtml(label)}:</b> ${renderedVal}</div>`;
+      })
+      .join("");
   }
 
   const title = properties.name ?? properties.title ?? properties.id ?? "Feature Details";
@@ -82,17 +173,26 @@ const buildTooltipHtml = (layer: GeoPlusLayerItem | undefined, properties: Recor
 
 const buildPopupHtml = (layer: GeoPlusLayerItem | undefined, properties: Record<string, unknown>) => {
   const popupFields = layer?.interactionConfig?.popupFields;
+  const validPopupFields = (popupFields ?? []).filter((field) => Object.prototype.hasOwnProperty.call(properties, field));
   const fields =
-    popupFields && popupFields.length > 0
-      ? popupFields
+    validPopupFields.length > 0
+      ? validPopupFields
       : Object.keys(properties).filter((field) => field !== "layer" && field !== "source");
   const rows = fields
     .map((field) => {
       const value = properties[field];
-      if (value === null || value === undefined || typeof value === "object") {
+      if (value === null || value === undefined || (typeof value === "object" && !Array.isArray(value))) {
         return null;
       }
-      return `<tr><td style="padding-right:12px; font-weight:600; vertical-align:top;">${escapeHtml(resolveFieldLabel(layer, field))}</td><td>${escapeHtml(value)}</td></tr>`;
+      const label = resolveFieldLabel(layer, field);
+      const isMedia = (typeof value === "string" && isMediaString(value).isMedia) || 
+                      (field === "media" && Array.isArray(value));
+      const renderedVal = renderHtmlValue(value, label);
+      
+      if (isMedia) {
+         return `<tr><td colspan="2" style="padding-top:4px; padding-bottom:6px;"><div style="font-weight:600; margin-bottom:4px;">${escapeHtml(label)}</div>${renderedVal}</td></tr>`;
+      }
+      return `<tr><td style="padding-right:12px; font-weight:600; vertical-align:top;">${escapeHtml(label)}</td><td>${renderedVal}</td></tr>`;
     })
     .filter(Boolean)
     .join("");
@@ -266,6 +366,79 @@ const deckObjectToGeoJsonFeature = (object: Record<string, unknown>): GeoJSON.Fe
   return null;
 };
 
+const toPrimitivePropertyRecord = (value: unknown): Record<string, string | number | boolean | null | unknown[]> => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  const properties = value as Record<string, unknown>;
+  const normalized: Record<string, string | number | boolean | null | unknown[]> = {};
+  for (const [key, candidate] of Object.entries(properties)) {
+    if (
+      candidate === null ||
+      typeof candidate === "string" ||
+      typeof candidate === "number" ||
+      typeof candidate === "boolean" ||
+      (key === "media" && Array.isArray(candidate))
+    ) {
+      normalized[key] = candidate;
+    }
+  }
+  return normalized;
+};
+
+const countGeometryVertices = (geometry: GeoJSON.Geometry): number => {
+  const walk = (coordinates: unknown): number => {
+    if (!Array.isArray(coordinates)) {
+      return 0;
+    }
+    if (coordinates.length >= 2 && typeof coordinates[0] === "number" && typeof coordinates[1] === "number") {
+      return 1;
+    }
+    return coordinates.reduce((total, child) => total + walk(child), 0);
+  };
+
+  if (geometry.type === "GeometryCollection") {
+    return geometry.geometries.reduce((total, child) => total + countGeometryVertices(child), 0);
+  }
+  return walk(geometry.coordinates);
+};
+
+const normalizeDrawFeatureCollectionForLayer = (source: GeoJSON.FeatureCollection): GeoJSON.FeatureCollection => {
+  const normalizedFeatures: GeoJSON.Feature[] = [];
+
+  source.features.forEach((feature) => {
+    if (!feature.geometry) {
+      return;
+    }
+
+    // Only keep user-defined primitive properties.
+    // We strip out internal Mapbox Draw properties (like 'active', 'mode')
+    // and stop injecting hardcoded draw_source, vertex_count, area_sqm, etc.
+    const userProperties = toPrimitivePropertyRecord(feature.properties);
+    
+    // Explicitly delete mapbox-gl-draw internal state properties if they leaked through
+    delete userProperties.active;
+    delete userProperties.mode;
+
+    let workingFeature: GeoJSON.Feature = feature;
+    try {
+      workingFeature = turf.cleanCoords(feature as GeoJSON.Feature, { mutate: false }) as GeoJSON.Feature;
+    } catch {
+      // Keep original feature if cleanup fails.
+    }
+
+    normalizedFeatures.push({
+      ...workingFeature,
+      properties: userProperties,
+    });
+  });
+
+  return {
+    type: "FeatureCollection",
+    features: normalizedFeatures,
+  };
+};
+
 const getDeckClickLngLat = (map: maplibregl.Map, info: Record<string, unknown>, object: Record<string, unknown>): [number, number] | null => {
   const coordinate = info.coordinate as [number, number] | undefined;
   if (Array.isArray(coordinate) && Number.isFinite(coordinate[0]) && Number.isFinite(coordinate[1])) {
@@ -320,16 +493,17 @@ const buildHoverHighlightStyle = (layer: GeoPlusLayerItem | undefined, geometryT
 export function useGeoPlusMap(
   selectedBasemapId: GeoPlusBasemapId,
   userLayers: GeoPlusLayerItem[],
-  hasOverlayLayers = false,
   zoomToLayerRequest: { layerId: string; nonce: number } | null = null,
   zoomToFeatureRequest: { feature: GeoJSON.Feature; nonce: number } | null = null,
   settings?: AppSettings,
+  onSaveDrawLayer?: (name: string, features: GeoJSON.FeatureCollection) => void,
 ) {
-  const defaultProjectionMode: MapProjectionMode = hasOverlayLayers ? "flat" : "globe";
+  const defaultProjectionMode: MapProjectionMode = "globe";
   const mapRootRef = useRef<HTMLDivElement | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const drawRef = useRef<MapboxDraw | null>(null);
   const deckOverlayRef = useRef<MapboxOverlay | null>(null);
   const scaleControlRef = useRef<maplibregl.ScaleControl | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
@@ -354,6 +528,37 @@ export function useGeoPlusMap(
   const [mapBearing, setMapBearing] = useState(0);
   const [mapViewMode, setMapViewMode] = useState<"2d" | "3d">("2d");
   const [mapProjectionMode, setMapProjectionMode] = useState<MapProjectionMode>(defaultProjectionMode);
+  const [activeDrawMode, setActiveDrawMode] = useState<DrawMode>("static");
+  const [selectedDrawFeature, setSelectedDrawFeature] = useState<GeoJSON.Feature | null>(null);
+  const [drawMeasurements, setDrawMeasurements] = useState<DrawMeasurements>({});
+  const [activeDrawTemplate, setActiveDrawTemplate] = useState<DrawTemplate | null>(null);
+  const [mediaViewerData, setMediaViewerData] = useState<MediaViewerData | null>(null);
+
+  // Global click listener for popup media elements
+  useEffect(() => {
+    const handlePopupClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const mediaEl = target.closest(".geoplus-popup-media") as HTMLElement;
+      if (mediaEl) {
+        const type = mediaEl.getAttribute("data-media-type") as "image" | "video";
+        const title = mediaEl.getAttribute("data-media-title") || undefined;
+        let src = "";
+        
+        if (type === "image" && mediaEl instanceof HTMLImageElement) {
+           src = mediaEl.src;
+        } else if (type === "video") {
+           src = mediaEl.getAttribute("data-media-src") || "";
+        }
+
+        if (src) {
+          setMediaViewerData({ src, type, title });
+        }
+      }
+    };
+
+    document.addEventListener("click", handlePopupClick);
+    return () => document.removeEventListener("click", handlePopupClick);
+  }, []);
 
   const applyProjectionMode = useCallback((map: maplibregl.Map, mode: MapProjectionMode) => {
     const projectionType = mode === "globe" ? "globe" : "mercator";
@@ -570,9 +775,247 @@ export function useGeoPlusMap(
       style: getBasemapStyle(selectedBasemapRef.current, isDark),
       center: initialCenter,
       zoom: initialZoom,
+      // @ts-ignore
+      projection: {
+        type: defaultProjectionMode === "globe" ? "globe" : "mercator",
+      },
       attributionControl: false,
     });
     mapRef.current = map;
+    applyProjectionMode(map, projectionModeRef.current);
+
+    // Initialize Drawing Control
+    const draw = new MapboxDraw({
+      displayControlsDefault: false,
+      userProperties: true,
+      modes: {
+        ...MapboxDraw.modes,
+        draw_rectangle: DrawRectangle,
+        draw_circle: DragCircleMode,
+        draw_hexagon: DragHexagonMode,
+        direct_select: DirectMode,
+        simple_select: SimpleSelectMode,
+      },
+      controls: {
+        point: false,
+        line_string: false,
+        polygon: false,
+        trash: false,
+        combine_features: false,
+        uncombine_features: false,
+      },
+      // Use GeoPlus emerald theme colors for drawing
+      styles: [
+        // ACTIVE (being drawn)
+        {
+          id: "gl-draw-polygon-fill-active",
+          type: "fill",
+          filter: ["all", ["==", "active", "true"], ["==", "$type", "Polygon"]],
+          paint: {
+            "fill-color": "#0ea67d",
+            "fill-opacity": 0.1,
+          },
+        },
+        {
+          id: "gl-draw-polygon-stroke-active",
+          type: "line",
+          filter: ["all", ["==", "active", "true"], ["==", "$type", "Polygon"]],
+          layout: {
+            "line-cap": "round",
+            "line-join": "round",
+          },
+          paint: {
+            "line-color": "#0ea67d",
+            "line-dasharray": [0.2, 2],
+            "line-width": 2,
+          },
+        },
+        {
+          id: "gl-draw-line-active",
+          type: "line",
+          filter: ["all", ["==", "active", "true"], ["==", "$type", "LineString"]],
+          layout: {
+            "line-cap": "round",
+            "line-join": "round",
+          },
+          paint: {
+            "line-color": "#0ea67d",
+            "line-dasharray": [0.2, 2],
+            "line-width": 2,
+          },
+        },
+        {
+          id: "gl-draw-polygon-and-line-vertex-active",
+          type: "circle",
+          filter: ["all", ["==", "meta", "vertex"], ["==", "$type", "Point"], ["!=", "mode", "static"]],
+          paint: {
+            "circle-radius": 4,
+            "circle-color": "#ffffff",
+            "circle-stroke-color": "#0ea67d",
+            "circle-stroke-width": 2,
+          },
+        },
+        // INACTIVE (already drawn)
+        {
+          id: "gl-draw-polygon-fill-inactive",
+          type: "fill",
+          filter: ["all", ["==", "active", "false"], ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
+          paint: {
+            "fill-color": "#0ea67d",
+            "fill-opacity": 0.1,
+          },
+        },
+        {
+          id: "gl-draw-polygon-stroke-inactive",
+          type: "line",
+          filter: ["all", ["==", "active", "false"], ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
+          layout: {
+            "line-cap": "round",
+            "line-join": "round",
+          },
+          paint: {
+            "line-color": "#0ea67d",
+            "line-width": 2,
+          },
+        },
+        {
+          id: "gl-draw-line-inactive",
+          type: "line",
+          filter: ["all", ["==", "active", "false"], ["==", "$type", "LineString"], ["!=", "mode", "static"]],
+          layout: {
+            "line-cap": "round",
+            "line-join": "round",
+          },
+          paint: {
+            "line-color": "#0ea67d",
+            "line-width": 2,
+          },
+        },
+        {
+          id: "gl-draw-point-inactive",
+          type: "circle",
+          filter: ["all", ["==", "active", "false"], ["==", "$type", "Point"], ["==", "meta", "feature"], ["!=", "mode", "static"]],
+          paint: {
+            "circle-radius": 6,
+            "circle-color": "#0ea67d",
+            "circle-stroke-color": "#ffffff",
+            "circle-stroke-width": 2,
+          },
+        },
+        {
+          id: "gl-draw-point-active",
+          type: "circle",
+          filter: ["all", ["==", "active", "true"], ["==", "$type", "Point"], ["!=", "mode", "static"]],
+          paint: {
+            "circle-radius": 8,
+            "circle-color": "#ffffff",
+            "circle-stroke-color": "#0ea67d",
+            "circle-stroke-width": 2,
+          },
+        },
+      ],
+    });
+    drawRef.current = draw;
+    map.addControl(draw as unknown as maplibregl.IControl);
+
+    const updateMeasurements = () => {
+      const selected = draw.getSelected();
+      if (selected.features.length > 0) {
+        const feature = selected.features[0];
+        
+        // Auto-detect purpose based on properties or fallback to current mode
+        if (feature.properties?.isMeasurement) {
+          drawPurposeRef.current = "measure";
+          setDrawPurpose("measure");
+        } else if (drawPurposeRef.current === "measure" && !feature.properties?.isMeasurement) {
+          // If we just created it under 'measure' mode, ensure property is saved.
+          draw.setFeatureProperty(feature.id as string, "isMeasurement", true);
+          feature.properties = feature.properties || {};
+          feature.properties.isMeasurement = true;
+        }
+
+        setSelectedDrawFeature(feature);
+        
+        const measurements: DrawMeasurements = {};
+        if (feature.geometry.type === "Point") {
+          const coords = (feature.geometry as GeoJSON.Point).coordinates;
+          measurements.coordinates = [coords[0], coords[1]];
+        } else if (feature.geometry.type === "LineString" || feature.geometry.type === "MultiLineString") {
+          measurements.lengthKm = turf.length(feature, { units: "kilometers" });
+        } else if (feature.geometry.type === "Polygon" || feature.geometry.type === "MultiPolygon") {
+          measurements.areaSqM = turf.area(feature);
+          measurements.lengthKm = turf.length(feature, { units: "kilometers" });
+        }
+        setDrawMeasurements(measurements);
+      } else {
+        setSelectedDrawFeature(null);
+        if (drawPurposeRef.current !== "measure") {
+          setDrawMeasurements({});
+        }
+      }
+    };
+
+    map.on("draw.create", (e) => {
+      if (e.features.length > 0 && drawPurposeRef.current === "measure") {
+        draw.setFeatureProperty(e.features[0].id, "isMeasurement", true);
+        // Pre-update measurements before deselection so the final value is captured
+        updateMeasurements();
+        
+        // Deselect the newly created measurement feature to remove the editing highlight/vertices
+        setTimeout(() => {
+          if (drawRef.current) {
+            drawRef.current.changeMode("simple_select", { featureIds: [] });
+          }
+        }, 0);
+        return;
+      }
+
+      // If a draw template is active and this is not a measurement, inject the template properties
+      if (e.features.length > 0 && drawPurposeRef.current === "draw" && activeDrawTemplateRef.current) {
+        const featureId = e.features[0].id;
+        const template = activeDrawTemplateRef.current;
+        for (const [key, field] of Object.entries(template)) {
+          let injectedValue: string | number | boolean | unknown[] = field.value;
+          
+          if (field.type === "float") {
+            injectedValue = parseFloat(field.value) || 0;
+          } else if (field.type === "integer") {
+            injectedValue = parseInt(field.value, 10) || 0;
+          } else if (field.type === "boolean") {
+            injectedValue = field.value.toLowerCase() === "true" || field.value === "1";
+          } else if (field.type === "image") {
+            // Special handling if needed, usually we leave it empty until user uploads
+            injectedValue = field.value || "";
+          }
+
+          draw.setFeatureProperty(featureId, key, injectedValue);
+        }
+        
+        // Force the feature to be selected so the properties panel opens automatically
+        setTimeout(() => {
+          if (drawRef.current) {
+            drawRef.current.changeMode("simple_select", { featureIds: [featureId] });
+            updateMeasurements();
+          }
+        }, 0);
+        return; // we call updateMeasurements inside the timeout after re-selection
+      }
+
+      updateMeasurements();
+    });
+    map.on("draw.delete", updateMeasurements);
+    map.on("draw.update", updateMeasurements);
+    map.on("draw.selectionchange", updateMeasurements);
+    map.on("draw.modechange", (e) => {
+      setActiveDrawMode(e.mode as DrawMode);
+      if (e.mode === "draw_point" || e.mode === "draw_line_string" || e.mode === "draw_polygon") {
+        // Mode changed externally without setDrawMode (e.g. via keyboard shortcut), assume draw by default if not set
+        if (!drawPurposeRef.current) {
+          drawPurposeRef.current = "draw";
+          setDrawPurpose("draw");
+        }
+      }
+    });
 
     map.once("load", () => {
       applyProjectionMode(map, projectionModeRef.current);
@@ -844,23 +1287,6 @@ export function useGeoPlusMap(
   }, [isSearchPanelOpen]);
 
   useEffect(() => {
-    const nextMode: MapProjectionMode = hasOverlayLayers ? "flat" : "globe";
-    if (projectionModeRef.current === nextMode) {
-      return;
-    }
-
-    projectionModeRef.current = nextMode;
-    setMapProjectionMode(nextMode);
-
-    if (mapRef.current) {
-      applyProjectionMode(mapRef.current, nextMode);
-      if (nextMode === "globe") {
-        fitGlobeToViewport(mapRef.current, true);
-      }
-    }
-  }, [hasOverlayLayers, applyProjectionMode, fitGlobeToViewport]);
-
-  useEffect(() => {
     if (!mapRef.current) {
       return;
     }
@@ -923,12 +1349,11 @@ export function useGeoPlusMap(
     if (!markerRef.current) {
       const markerElement = document.createElement("div");
       markerElement.setAttribute("aria-hidden", "true");
-      markerElement.style.width = "16px";
-      markerElement.style.height = "16px";
-      markerElement.style.borderRadius = "9999px";
-      markerElement.style.background = "var(--accent)";
-      markerElement.style.border = "2px solid var(--background)";
-      markerElement.style.boxShadow = "0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent), 0 6px 16px rgba(0,0,0,0.35)";
+      markerElement.className = "relative flex h-6 w-6 items-center justify-center";
+      markerElement.innerHTML = `
+        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-50"></span>
+        <span class="relative inline-flex h-3.5 w-3.5 rounded-full border-2 border-background bg-accent shadow-[0_2px_8px_rgba(0,0,0,0.35)]"></span>
+      `;
 
       markerRef.current = new maplibregl.Marker({
         element: markerElement,
@@ -939,18 +1364,23 @@ export function useGeoPlusMap(
     markerRef.current.setLngLat([longitude, latitude]).addTo(map);
   }, []);
 
-  const flyToCoordinates = useCallback((longitude: number, latitude: number, zoom = 13) => {
+  const flyToCoordinates = useCallback((longitude: number, latitude: number, zoom = 14) => {
     const map = mapRef.current;
     if (!map) {
       return;
+    }
+
+    if (map.isZooming() || map.isMoving()) {
+      map.stop();
     }
 
     map.flyTo({
       center: [longitude, latitude],
       zoom,
       essential: true,
-      speed: 0.9,
-      curve: 1.35,
+      speed: 1.2,
+      curve: 1.42,
+      maxDuration: 2500,
     });
   }, []);
 
@@ -1086,32 +1516,70 @@ export function useGeoPlusMap(
       return;
     }
 
+    // Modern browsers require a Secure Context (HTTPS or localhost) for Geolocation.
+    // If the user is accessing via a local IP (e.g. 192.168.x.x), this will likely be false.
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      setStatusMessage("Location requires a secure connection (HTTPS). If you are testing locally, use 'localhost' instead of an IP address.");
+      return;
+    }
+
+    if (!mapRef.current) {
+      setStatusMessage("Map is not ready yet. Please wait a moment.");
+      return;
+    }
+
     setIsLocating(true);
     setStatusMessage(null);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        flyToCoordinates(longitude, latitude, 14);
-        setMapMarker(longitude, latitude);
-        setStatusMessage(null);
+
+    const handleSuccess = (position: GeolocationPosition) => {
+      const { latitude, longitude } = position.coords;
+      
+      // Safety check for invalid coordinates
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        setStatusMessage("Received invalid coordinates from your device.");
         setIsLocating(false);
-      },
-      (error) => {
-        if (error.code === error.PERMISSION_DENIED) {
-          setStatusMessage("Location permission was denied.");
-        } else if (error.code === error.TIMEOUT) {
-          setStatusMessage("Timed out while retrieving your location.");
-        } else {
-          setStatusMessage("Unable to determine your location.");
-        }
+        return;
+      }
+
+      flyToCoordinates(longitude, latitude, 15);
+      setMapMarker(longitude, latitude);
+      setStatusMessage(null);
+      setIsLocating(false);
+    };
+
+    const handleError = (error: GeolocationPositionError) => {
+      console.warn("Geolocation attempt failed:", error.message || "Unknown error", `(Code: ${error.code})`);
+      
+      if (error.code === error.PERMISSION_DENIED) {
+        setStatusMessage("Location access was denied. Please enable it in your browser settings (check the address bar lock icon).");
         setIsLocating(false);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 60000,
-      },
-    );
+      } else {
+        // For Code 2 (Unavailable) or Code 3 (Timeout), try one last attempt with low accuracy and no timeout
+        // This sometimes helps wake up the OS location provider if it was stuck.
+        navigator.geolocation.getCurrentPosition(
+          handleSuccess,
+          (finalError) => {
+            console.warn("Geolocation fallback failed:", finalError.message || "Unknown error", `(Code: ${finalError.code})`);
+            if (finalError.code === finalError.TIMEOUT) {
+              setStatusMessage("Location request timed out. Please ensure you have a clear view of the sky or a strong Wi-Fi signal.");
+            } else if (finalError.code === 2) {
+              setStatusMessage("Location unavailable. On macOS, go to System Settings > Privacy & Security > Location Services and ensure it's ON for your browser.");
+            } else {
+              setStatusMessage("Unable to determine your location. Please check your browser and OS privacy settings.");
+            }
+            setIsLocating(false);
+          },
+          { enableHighAccuracy: false, timeout: 20000, maximumAge: 30000 }
+        );
+      }
+    };
+
+    // First attempt: High accuracy with a generous timeout
+    navigator.geolocation.getCurrentPosition(handleSuccess, handleError, {
+      enableHighAccuracy: true,
+      timeout: 12000,
+      maximumAge: 0,
+    });
   }, [flyToCoordinates, setMapMarker]);
 
   const toggleSearchPanel = useCallback(() => {
@@ -1128,6 +1596,124 @@ export function useGeoPlusMap(
 
   const closeAttributionPanel = useCallback(() => {
     setIsAttributionOpen(false);
+  }, []);
+
+  const drawPurposeRef = useRef<DrawPurpose>("draw");
+  const [drawPurpose, setDrawPurpose] = useState<DrawPurpose>("draw");
+  const activeDrawTemplateRef = useRef<DrawTemplate | null>(null);
+
+  // Sync state to ref for the event handler
+  useEffect(() => {
+    activeDrawTemplateRef.current = activeDrawTemplate;
+  }, [activeDrawTemplate]);
+
+  const setDrawMode = useCallback((mode: DrawMode, purpose: DrawPurpose = "draw") => {
+    if (!drawRef.current) return;
+    drawPurposeRef.current = purpose;
+    setDrawPurpose(purpose);
+    drawRef.current.changeMode(mode as string);
+    setActiveDrawMode(mode);
+  }, []);
+
+  const deleteSelectedDraw = useCallback(() => {
+    if (!drawRef.current) return;
+    drawRef.current.trash();
+    setSelectedDrawFeature(null);
+    setDrawMeasurements({});
+  }, []);
+
+  const clearAllDrawings = useCallback(() => {
+    if (!drawRef.current) return;
+    drawRef.current.deleteAll();
+    setSelectedDrawFeature(null);
+    setDrawMeasurements({});
+    setActiveDrawMode("static");
+  }, []);
+
+  const updateDrawFeatureProperty = useCallback((featureId: string, key: string, value: unknown) => {
+    if (!drawRef.current) return;
+    drawRef.current.setFeatureProperty(featureId, key, value as string | number | boolean | object | null);
+    // Refresh selected feature to update UI
+    const selected = drawRef.current.getSelected();
+    if (selected.features.length > 0 && String(selected.features[0].id) === String(featureId)) {
+      setSelectedDrawFeature({ ...selected.features[0] });
+    }
+  }, []);
+
+  const saveDrawingsAsLayer = useCallback((name: string) => {
+    if (!drawRef.current || !onSaveDrawLayer) return;
+    const rawFeatures = drawRef.current.getAll();
+    if (rawFeatures.features.length === 0) return;
+    const normalizedFeatures = normalizeDrawFeatureCollectionForLayer(rawFeatures);
+    if (normalizedFeatures.features.length === 0) return;
+    onSaveDrawLayer(name, normalizedFeatures);
+    clearAllDrawings();
+  }, [onSaveDrawLayer, clearAllDrawings]);
+
+  const simplifySelectedDraw = useCallback(() => {
+    if (!drawRef.current) return;
+    const selected = drawRef.current.getSelected();
+    if (selected.features.length === 0) return;
+
+    const feature = selected.features[0];
+    try {
+      const simplified = turf.simplify(feature as GeoJSON.Feature, { tolerance: 0.005, highQuality: true, mutate: false });
+      simplified.id = feature.id;
+      // Preserve properties
+      simplified.properties = { ...feature.properties };
+      drawRef.current.add(simplified);
+      setSelectedDrawFeature({ ...simplified } as GeoJSON.Feature);
+      
+      // Update measurements
+      const measurements: DrawMeasurements = {};
+      if (simplified.geometry.type === "LineString" || simplified.geometry.type === "MultiLineString") {
+        measurements.lengthKm = turf.length(simplified, { units: "kilometers" });
+      } else if (simplified.geometry.type === "Polygon" || simplified.geometry.type === "MultiPolygon") {
+        measurements.areaSqM = turf.area(simplified);
+        measurements.lengthKm = turf.length(simplified, { units: "kilometers" });
+      }
+      setDrawMeasurements(measurements);
+    } catch (e) {
+      console.error("Simplify failed", e);
+    }
+  }, []);
+
+  const smoothSelectedDraw = useCallback(() => {
+    if (!drawRef.current) return;
+    const selected = drawRef.current.getSelected();
+    if (selected.features.length === 0) return;
+
+    const feature = selected.features[0];
+    try {
+      let smoothed: GeoJSON.Feature | null = null;
+      if (feature.geometry.type === "LineString" || feature.geometry.type === "MultiLineString") {
+        smoothed = turf.bezierSpline(feature as GeoJSON.Feature<GeoJSON.LineString>, { resolution: 10000, sharpness: 0.85 });
+      } else if (feature.geometry.type === "Polygon" || feature.geometry.type === "MultiPolygon") {
+        const smoothedPolygons = turf.polygonSmooth(feature as GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>, { iterations: 2 });
+        if (smoothedPolygons.features && smoothedPolygons.features.length > 0) {
+          smoothed = smoothedPolygons.features[0];
+        }
+      }
+
+      if (smoothed) {
+        smoothed.id = feature.id;
+        smoothed.properties = { ...feature.properties };
+        drawRef.current.add(smoothed);
+        setSelectedDrawFeature({ ...smoothed });
+
+        // Update measurements
+        const measurements: DrawMeasurements = {};
+        if (smoothed.geometry.type === "LineString" || smoothed.geometry.type === "MultiLineString") {
+          measurements.lengthKm = turf.length(smoothed, { units: "kilometers" });
+        } else if (smoothed.geometry.type === "Polygon" || smoothed.geometry.type === "MultiPolygon") {
+          measurements.areaSqM = turf.area(smoothed);
+          measurements.lengthKm = turf.length(smoothed, { units: "kilometers" });
+        }
+        setDrawMeasurements(measurements);
+      }
+    } catch (e) {
+      console.error("Smooth failed", e);
+    }
   }, []);
 
   return {
@@ -1147,6 +1733,15 @@ export function useGeoPlusMap(
     mapProjectionMode,
     statusMessage,
     mapBearing,
+    activeDrawMode,
+    drawPurpose,
+    selectedDrawFeature,
+    drawMeasurements,
+    setDrawMeasurements,
+    activeDrawTemplate,
+    setActiveDrawTemplate,
+    mediaViewerData,
+    setMediaViewerData,
     toggleSearchPanel,
     toggleLegendPanel,
     toggleAttributionPanel,
@@ -1160,5 +1755,12 @@ export function useGeoPlusMap(
     resetNavigation,
     goToCurrentLocation,
     toggleFullscreen,
+    setDrawMode,
+    deleteSelectedDraw,
+    clearAllDrawings,
+    updateDrawFeatureProperty,
+    saveDrawingsAsLayer,
+    simplifySelectedDraw,
+    smoothSelectedDraw,
   };
 }

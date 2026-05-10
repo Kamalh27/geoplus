@@ -55,22 +55,26 @@ export const parseGeoJsonUpload: UploadFileParser = async (file) => {
 
   const tileJsonSource = detectTileJsonSource(record);
   if (tileJsonSource) {
-    return {
-      formatLabel: "TileJSON",
-      layerType: tileJsonSource.layerType,
-      sourceUrl: tileJsonSource.sourceUrl,
-      readyMessage: "TileJSON parsed and ready to add.",
-    };
+    return [
+      {
+        formatLabel: "TileJSON",
+        layerType: tileJsonSource.layerType,
+        sourceUrl: tileJsonSource.sourceUrl,
+        readyMessage: "TileJSON parsed and ready to add.",
+      }
+    ];
   }
 
   if (!isGeoJsonType(record.type)) {
     throw new Error("JSON is not valid GeoJSON or TileJSON.");
   }
 
-  return {
-    formatLabel: "GeoJSON",
-    layerType: "geojson",
-    inlineData: parsed,
-    readyMessage: "GeoJSON parsed and ready to add.",
-  };
+  return [
+    {
+      formatLabel: "GeoJSON",
+      layerType: "geojson",
+      inlineData: parsed,
+      readyMessage: "GeoJSON parsed and ready to add.",
+    }
+  ];
 };

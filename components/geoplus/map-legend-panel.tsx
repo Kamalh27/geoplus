@@ -1,8 +1,9 @@
 "use client";
 
-import { BookMarked, ChevronDown, Eye, Layers3 } from "lucide-react";
+import { BookMarked, ChevronDown, Eye, Layers3, GripHorizontal } from "lucide-react";
 import type { GeoPlusLayerItem, GeoPlusMarkerStyle } from "@/components/geoplus/types";
 import { getLayerGeometryFamilies, getLayerColorRampColors } from "@/lib/geoplus/layer-helpers";
+import { useState, useRef, useEffect } from "react";
 
 type MapLegendPanelProps = {
   isOpen: boolean;
@@ -66,6 +67,40 @@ function LegendShape({
 }
 
 export function MapLegendPanel({ isOpen, onToggle, layers, onToggleLayerVisibility }: MapLegendPanelProps) {
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartPos = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const handlePointerMove = (e: PointerEvent) => {
+      if (!isDragging) return;
+      
+      const dx = e.clientX - dragStartPos.current.x;
+      const dy = e.clientY - dragStartPos.current.y;
+      
+      setPosition(prev => ({
+        x: prev.x + dx,
+        y: prev.y + dy
+      }));
+      
+      dragStartPos.current = { x: e.clientX, y: e.clientY };
+    };
+
+    const handlePointerUp = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      window.addEventListener("pointermove", handlePointerMove);
+      window.addEventListener("pointerup", handlePointerUp);
+    }
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [isDragging]);
+
   if (!isOpen) {
     return null;
   }
@@ -73,9 +108,27 @@ export function MapLegendPanel({ isOpen, onToggle, layers, onToggleLayerVisibili
   const visibleLayers = layers.filter((l) => l.visible);
 
   return (
-    <aside className="pointer-events-auto absolute bottom-3 right-14 w-[min(20rem,calc(100%-4.5rem))] max-h-[60vh] overflow-y-auto rounded-xl border border-border/75 bg-card/95 shadow-[0_14px_36px_rgba(15,23,42,0.25)] backdrop-blur-md dark:shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
-      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border/60 bg-card/95 backdrop-blur-sm px-3 py-2.5">
+    <aside
+      className="pointer-events-auto absolute bottom-3 right-14 w-[min(20rem,calc(100%-4.5rem))] max-h-[60vh] flex flex-col rounded-xl border border-border/75 bg-card/95 shadow-[0_14px_36px_rgba(15,23,42,0.25)] backdrop-blur-md dark:shadow-[0_12px_32px_rgba(0,0,0,0.45)] z-40 transition-shadow"
+      style={{
+        transform: `translate(${position.x}px, ${position.y}px)`,
+        touchAction: "none"
+      }}
+    >
+      <header
+        className={`flex items-center justify-between border-b border-border/60 bg-card/95 backdrop-blur-sm px-3 py-2.5 rounded-t-xl select-none ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
+        onPointerDown={(e) => {
+          setIsDragging(true);
+          dragStartPos.current = { x: e.clientX, y: e.clientY };
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerUp={(e) => {
+          setIsDragging(false);
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }}
+      >
         <div className="flex items-center gap-1.5 text-sm font-semibold tracking-tight text-card-foreground">
+          <GripHorizontal className="size-4 text-muted-foreground/50 mr-1 transition-colors hover:text-accent" />
           <BookMarked className="size-4 text-accent" />
           <span>Map Legend</span>
         </div>
@@ -84,13 +137,17 @@ export function MapLegendPanel({ isOpen, onToggle, layers, onToggleLayerVisibili
           aria-label="Hide legend panel"
           title="Hide legend panel"
           className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-border/60 text-muted-foreground transition hover:bg-accent/20 hover:text-foreground"
-          onClick={onToggle}
+          onClick={(e) => {
+            e.stopPropagation(); // Prevent drag start when clicking close
+            onToggle();
+          }}
+          onPointerDown={(e) => e.stopPropagation()} // Prevent dragging when pressing the button
         >
           <ChevronDown className="size-4" />
         </button>
       </header>
 
-      <div className="space-y-3 px-3 py-3">
+      <div className="space-y-3 px-3 py-3 overflow-y-auto geoplus-panel-scroll">
         {visibleLayers.length === 0 ? (
           <div className="rounded-md border border-dashed border-border/70 px-3 py-5 text-center bg-muted/10">
             <Layers3 className="mx-auto size-6 text-muted-foreground/50 mb-2" />

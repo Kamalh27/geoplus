@@ -1,7 +1,7 @@
 import { csvParse, tsvParse } from "d3-dsv";
 import { convertWKTToGeometry } from "@loaders.gl/gis";
 
-import type { ParsedUploadLayer, UploadFileParser } from "@/lib/geoplus/upload-parsers/types";
+import type { UploadFileParser } from "@/lib/geoplus/upload-parsers/types";
 
 type CsvRecord = Record<string, string>;
 
@@ -99,10 +99,12 @@ export const parseCsvUpload: UploadFileParser = async (file) => {
   const layerType = inferLayerType(features);
   const formatLabel = file.name.toLowerCase().endsWith(".tsv") ? "TSV" : "CSV";
 
-  return {
-    formatLabel,
-    layerType,
-    inlineData: toFeatureCollection(features),
-    readyMessage: `${formatLabel} parsed and ready to add.`,
-  } as ParsedUploadLayer;
+  return [
+    {
+      formatLabel,
+      layerType,
+      inlineData: toFeatureCollection(features),
+      readyMessage: `${formatLabel} parsed and ready to add.`,
+    }
+  ];
 };

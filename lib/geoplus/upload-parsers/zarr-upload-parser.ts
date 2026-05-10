@@ -21,16 +21,18 @@ export const parseZarrUpload: UploadFileParser = async (file) => {
 
     const primaryVariable = arrayPaths[0]; // Simple fallback to the first array found
 
-    return {
-      formatLabel: "Zarr",
-      layerType: "raster-tile", // We'll treat Zarr as raster for now using carbonplan zarr-layer
-      inlineData: {
-        file, // We store the File object so the renderer can create the JSZip store
-        variable: primaryVariable,
-        variables: arrayPaths,
-      },
-      readyMessage: `Zarr archive parsed. Found variables: ${arrayPaths.join(", ")}. Ready to add.`,
-    };
+    return [
+      {
+        formatLabel: "Zarr",
+        layerType: "raster-tile", // We'll treat Zarr as raster for now using carbonplan zarr-layer
+        inlineData: {
+          file, // We store the File object so the renderer can create the JSZip store
+          variable: primaryVariable,
+          variables: arrayPaths,
+        },
+        readyMessage: `Zarr archive parsed. Found variables: ${arrayPaths.join(", ")}. Ready to add.`,
+      }
+    ];
   } catch (error) {
     throw new Error(`Failed to parse Zarr archive: ${error instanceof Error ? error.message : "Unknown error"}`);
   }

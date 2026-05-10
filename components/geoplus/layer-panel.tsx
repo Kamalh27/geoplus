@@ -479,7 +479,7 @@ export function LayerPanel({
                       onDragStart={() => onLayerDragStart(layer.id)}
                       onDragEnd={resetDragState}
                     >
-                      <GripVertical className="size-4" />
+                      <GripVertical className="size-4 transition-colors hover:text-accent" />
                     </button>
                   ) : <div className="ml-1" />}
                   <p className={cn("min-w-0 flex-1 truncate text-[0.95rem] font-semibold tracking-[-0.01em] text-foreground", !layer.visible && "text-muted-foreground line-through")}>
@@ -762,6 +762,7 @@ export function LayerPanel({
           defaultStyleConfig={DEFAULT_STYLE_CONFIG}
           onSetLayerStylePreset={onSetLayerStylePreset}
           onSetLayerStyleConfig={onSetLayerStyleConfig}
+          onSetLayerOpacity={onSetLayerOpacity}
           handleCustomMarkerUpload={handleCustomMarkerUpload}
           getLayerStyleFieldOptions={getLayerStyleFieldOptions}
           clampValue={clampValue}

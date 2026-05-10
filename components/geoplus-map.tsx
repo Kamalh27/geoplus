@@ -3,26 +3,26 @@
 import { MapControls } from "@/components/geoplus/map-controls";
 import { MapAttributionControl } from "@/components/geoplus/map-attribution-control";
 import { MapLegendPanel } from "@/components/geoplus/map-legend-panel";
+import { MediaViewerDialog } from "@/components/geoplus/media-viewer-dialog";
 import { MapSearchPanel } from "@/components/geoplus/map-search-panel";
 import { MapStatusMessage } from "@/components/geoplus/map-status-message";
 import { getBasemapAttributionLines, type GeoPlusBasemapId } from "@/components/geoplus/map-style";
 import type { GeoPlusLayerItem } from "@/components/geoplus/types";
 import { useGeoPlusMap } from "@/components/geoplus/use-geoplus-map";
-import { useAppSettings } from "@/components/geoplus/use-app-settings";
+import type { AppSettings } from "@/components/geoplus/use-app-settings";
 
 type GeoPlusMapProps = {
   selectedBasemapId: GeoPlusBasemapId;
   layers: GeoPlusLayerItem[];
+  settings: AppSettings;
   zoomToLayerRequest?: { layerId: string; nonce: number } | null;
   zoomToFeatureRequest?: { feature: GeoJSON.Feature; nonce: number } | null;
   onToggleLayerVisibility?: (layerId: string) => void;
   onClearFilters?: () => void;
+  onSaveDrawLayer?: (name: string, features: GeoJSON.FeatureCollection) => void;
 };
 
-export function GeoPlusMap({ selectedBasemapId, layers, zoomToLayerRequest = null, zoomToFeatureRequest = null, onToggleLayerVisibility, onClearFilters }: GeoPlusMapProps) {
-  const { settings } = useAppSettings();
-  const hasOverlayLayers = layers.length > 0;
-
+export function GeoPlusMap({ selectedBasemapId, layers, settings, zoomToLayerRequest = null, zoomToFeatureRequest = null, onToggleLayerVisibility, onClearFilters, onSaveDrawLayer }: GeoPlusMapProps) {
   const {
     mapRootRef,
     mapContainerRef,
@@ -40,6 +40,12 @@ export function GeoPlusMap({ selectedBasemapId, layers, zoomToLayerRequest = nul
     mapProjectionMode,
     statusMessage,
     mapBearing,
+    activeDrawMode,
+    drawPurpose,
+    selectedDrawFeature,
+    drawMeasurements,
+    activeDrawTemplate,
+    setActiveDrawTemplate,
     toggleSearchPanel,
     toggleLegendPanel,
     toggleAttributionPanel,
@@ -53,10 +59,19 @@ export function GeoPlusMap({ selectedBasemapId, layers, zoomToLayerRequest = nul
     resetNavigation,
     goToCurrentLocation,
     toggleFullscreen,
-  } = useGeoPlusMap(selectedBasemapId, layers, hasOverlayLayers, zoomToLayerRequest, zoomToFeatureRequest, settings);
+    setDrawMode,
+    deleteSelectedDraw,
+    clearAllDrawings,
+    updateDrawFeatureProperty,
+    saveDrawingsAsLayer,
+    simplifySelectedDraw,
+    smoothSelectedDraw,
+    mediaViewerData,
+    setMediaViewerData,
+  } = useGeoPlusMap(selectedBasemapId, layers, zoomToLayerRequest, zoomToFeatureRequest, settings, onSaveDrawLayer);
 
   return (
-    <div ref={mapRootRef} className="geoplus-map-root relative h-full w-full min-h-[420px]">
+    <div ref={mapRootRef} className="geoplus-map-root relative h-full w-full min-h-[420px] overflow-hidden">
       <div ref={mapContainerRef} aria-label="GeoPlus map" className="h-full w-full min-h-[420px]" />
 
       <div className="pointer-events-none absolute inset-0 z-20">
@@ -80,6 +95,13 @@ export function GeoPlusMap({ selectedBasemapId, layers, zoomToLayerRequest = nul
           isLocating={isLocating}
           isFullscreen={isFullscreen}
           mapBearing={mapBearing}
+          activeDrawMode={activeDrawMode}
+          drawPurpose={drawPurpose}
+          selectedDrawFeature={selectedDrawFeature}
+          drawMeasurements={drawMeasurements}
+          activeDrawTemplate={activeDrawTemplate}
+          setActiveDrawTemplate={setActiveDrawTemplate}
+          setMediaViewerData={setMediaViewerData}
           onToggleSearchPanel={toggleSearchPanel}
           onToggleLegendPanel={toggleLegendPanel}
           onSetMapMode={setMapMode}
@@ -90,6 +112,13 @@ export function GeoPlusMap({ selectedBasemapId, layers, zoomToLayerRequest = nul
           onGoToCurrentLocation={goToCurrentLocation}
           onToggleFullscreen={toggleFullscreen}
           onClearFilters={onClearFilters}
+          onSetDrawMode={setDrawMode}
+          onDeleteSelectedDraw={deleteSelectedDraw}
+          onClearAllDrawings={clearAllDrawings}
+          onUpdateDrawFeatureProperty={updateDrawFeatureProperty}
+          onSaveDrawingsAsLayer={saveDrawingsAsLayer}
+          onSimplifySelectedDraw={simplifySelectedDraw}
+          onSmoothSelectedDraw={smoothSelectedDraw}
           settings={settings}
         />
 
@@ -112,6 +141,8 @@ export function GeoPlusMap({ selectedBasemapId, layers, zoomToLayerRequest = nul
           onToggle={toggleAttributionPanel}
           onClose={closeAttributionPanel}
         />
+
+        <MediaViewerDialog data={mediaViewerData} onClose={() => setMediaViewerData(null)} />
       </div>
     </div>
   );

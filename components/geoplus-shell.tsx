@@ -15,7 +15,7 @@ import { LayerPanel } from "@/components/geoplus/layer-panel";
 import { DEFAULT_GLOBE_BASEMAP_ID, type GeoPlusBasemapId } from "@/components/geoplus/map-style";
 import { GeoPlusRightInsightsPanel } from "@/components/geoplus/right-insights-panel";
 import { SpatialToolsPanel } from "@/components/geoplus/spatial-tools-panel";
-import type { GeoPlusLayerItem, GeoPlusSpatialAnalysisOperation } from "@/components/geoplus/types";
+import type { GeoPlusLayerItem, GeoPlusSpatialAnalysisOperation, GeoPlusUser } from "@/components/geoplus/types";
 import { GeoPlusHeader } from "@/components/geoplus/header-actions";
 import { Button } from "@/components/ui/button";
 import { AnnouncementsDialog } from "@/components/geoplus/announcements-dialog";
@@ -29,7 +29,8 @@ type HelpDialogId = "announcement" | "guide" | "user-manual" | "bug-fix-form" | 
 type GuideTopicId = "sidebar" | "header-actions" | "layers" | "tools" | "basemap" | "ai" | "settings" | "map-search" | "map-zoom" | "map-compass" | "map-3d" | "map-projection" | "map-legend" | "map-locate" | "map-fullscreen";
 import { BugFixDialog } from "@/components/geoplus/bug-fix-dialog";
 import { SaveDashboardDialog } from "@/components/geoplus/save-dashboard-dialog";
-import { hydrateDashboardLayers } from "@/lib/geoplus/dashboard-hydration";
+import { hydrateDashboardLayers, requiresDashboardLayerHydration } from "@/lib/geoplus/dashboard-hydration";
+import { CORE_BACKEND_URL } from "@/lib/geoplus/dashboard-storage";
 
 const workspaceTabs: {
   id: WorkspaceTab;
@@ -360,18 +361,50 @@ const buildDerivedAnalysisLayer = (args: {
   };
 };
 
-export function GeoPlusShell({ initialLayers = [] }: { initialLayers?: GeoPlusLayerItem[] } = {}) {
+import { getLoginUrl, getLogoutUrl } from "@/lib/geoplus/auth";
+
+export function GeoPlusShell({ 
+  initialDashboardId = null,
+  initialLayers = [], 
+  initialUser = null,
+  initialProjectUid = null,
+  initialProjectName = null,
+}: { 
+  initialDashboardId?: string | null;
+  initialLayers?: GeoPlusLayerItem[];
+  initialUser?: GeoPlusUser | null;
+  initialProjectUid?: string | null;
+  initialProjectName?: string | null;
+} = {}) {
+  const [dashboardBootstrapLayers, setDashboardBootstrapLayers] = useState<GeoPlusLayerItem[]>(initialLayers);
+  const initialDashboardLayerKey = useMemo(
+    () => dashboardBootstrapLayers.map((layer) => layer.id).join("|"),
+    [dashboardBootstrapLayers],
+  );
+  const safeInitialLayers = useMemo(
+    () =>
+      dashboardBootstrapLayers.map((layer) =>
+        requiresDashboardLayerHydration(layer)
+          ? {
+              ...layer,
+              sourceUrl: undefined,
+            }
+          : layer,
+      ),
+    [dashboardBootstrapLayers],
+  );
   const { settings, updateSettings, isLoaded } = useAppSettings();
   const shellRef = useRef<HTMLDivElement | null>(null);
   const sidebarWrapperRef = useRef<HTMLDivElement | null>(null);
   const themeModeRef = useRef<"dark" | "light" | null>(null);
   const layersRef = useRef<GeoPlusLayerItem[]>([]);
   const duckDbRunByLayerRef = useRef<Record<string, number>>({});
+  const hasAutoZoomedDashboardRef = useRef(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [leftSafeArea, setLeftSafeArea] = useState("0.75rem");
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("layers");
   const [sessionBasemapId, setSessionBasemapId] = useState<GeoPlusBasemapId | null>(null);
-  const [layers, setLayers] = useState<GeoPlusLayerItem[]>(initialLayers);
+  const [layers, setLayers] = useState<GeoPlusLayerItem[]>(safeInitialLayers);
   const [selectedToolsLayerId, setSelectedToolsLayerId] = useState("");
   const [openToolRequest, setOpenToolRequest] = useState<{ toolId: string; nonce: number } | null>(null);
   const [bottomPanelTab, setBottomPanelTab] = useState<"table" | "shell" | "none">("none");
@@ -380,6 +413,29 @@ export function GeoPlusShell({ initialLayers = [] }: { initialLayers?: GeoPlusLa
   const [zoomToFeatureRequest, setZoomToFeatureRequest] = useState<{ feature: GeoJSON.Feature; nonce: number } | null>(null);
   const [activeHelpDialog, setActiveHelpDialog] = useState<HelpDialogId | null>(null);
   const [activeGuideTopicIndex, setActiveGuideTopicIndex] = useState(0);
+  const [user] = useState<GeoPlusUser | null>(initialUser);
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [isDashboardMetadataLoading, setIsDashboardMetadataLoading] = useState(false);
+  const [isDashboardLayerHydrating, setIsDashboardLayerHydrating] = useState(
+    () => initialLayers.some((layer) => requiresDashboardLayerHydration(layer)),
+  );
+
+  const handleLogin = useCallback(() => {
+    setIsAuthLoading(true);
+    try {
+      // Redirect to the core platform login.
+      window.location.assign(getLoginUrl(window.location.href));
+    } catch (error) {
+      console.error("GeoPlus login redirect failed:", error);
+      setIsAuthLoading(false);
+    }
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    // Redirect to the core platform logout
+    window.location.href = getLogoutUrl(window.location.href);
+  }, []);
+
   const selectedBasemapRef = useRef<GeoPlusBasemapId>(DEFAULT_GLOBE_BASEMAP_ID);
   const selectedBasemapId = sessionBasemapId ?? settings.defaultBasemap ?? DEFAULT_GLOBE_BASEMAP_ID;
 
@@ -404,19 +460,106 @@ export function GeoPlusShell({ initialLayers = [] }: { initialLayers?: GeoPlusLa
   }, []);
 
   const openHelpDialog = useCallback((dialogId: HelpDialogId) => {
+    if (dialogId === "save-dashboard" && !user) {
+      handleLogin();
+      return;
+    }
     if (dialogId === "guide") {
       handleGuideStepChange(0);
     }
     setActiveHelpDialog(dialogId);
-  }, [handleGuideStepChange]);
+  }, [handleGuideStepChange, handleLogin, user]);
 
   useEffect(() => {
-    if (initialLayers.length > 0) {
-      hydrateDashboardLayers(initialLayers).then((hydrated) => {
-        setLayers(hydrated);
-      }).catch(console.error);
-    }
+    setDashboardBootstrapLayers(initialLayers);
   }, [initialLayers]);
+
+  useEffect(() => {
+    if (!initialDashboardId || initialLayers.length > 0) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadDashboard = async () => {
+      setIsDashboardMetadataLoading(true);
+
+      try {
+        const response = await fetch(`${CORE_BACKEND_URL}/api/v1/geoplus/dashboards/${initialDashboardId}`, {
+          cache: "no-store",
+          credentials: "include",
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to load dashboard ${initialDashboardId}: ${response.status} ${response.statusText}`);
+        }
+
+        const data = (await response.json()) as Partial<{ layers: GeoPlusLayerItem[] }>;
+        if (isCancelled) {
+          return;
+        }
+
+        setDashboardBootstrapLayers(Array.isArray(data.layers) ? data.layers : []);
+      } catch (error) {
+        if (!isCancelled) {
+          console.error("Failed to reload dashboard metadata in GeoPlus:", error);
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsDashboardMetadataLoading(false);
+        }
+      }
+    };
+
+    void loadDashboard();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [initialDashboardId, initialLayers]);
+
+  useEffect(() => {
+    setLayers(safeInitialLayers);
+  }, [safeInitialLayers]);
+
+  useEffect(() => {
+    if (dashboardBootstrapLayers.length > 0) {
+      setIsDashboardLayerHydrating(
+        dashboardBootstrapLayers.some((layer) => requiresDashboardLayerHydration(layer)),
+      );
+      hydrateDashboardLayers(dashboardBootstrapLayers).then((hydrated) => {
+        setLayers(hydrated);
+      }).catch(console.error).finally(() => {
+        setIsDashboardLayerHydrating(false);
+      });
+    } else {
+      setIsDashboardLayerHydrating(false);
+    }
+  }, [dashboardBootstrapLayers]);
+
+  useEffect(() => {
+    hasAutoZoomedDashboardRef.current = false;
+  }, [initialDashboardLayerKey]);
+
+  useEffect(() => {
+    if (!initialDashboardLayerKey || hasAutoZoomedDashboardRef.current) {
+      return;
+    }
+
+    const targetLayer =
+      layers.find((layer) => layer.visible && getLayerSourceFeatureCollection(layer) !== null) ??
+      layers.find((layer) => getLayerSourceFeatureCollection(layer) !== null);
+
+    if (!targetLayer) {
+      return;
+    }
+
+    hasAutoZoomedDashboardRef.current = true;
+    setZoomToLayerRequest({
+      layerId: targetLayer.id,
+      nonce: Date.now(),
+    });
+  }, [initialDashboardLayerKey, layers]);
 
   useEffect(() => {
     // Check if the user has seen the welcome tour. If not, auto-launch it.
@@ -776,6 +919,8 @@ export function GeoPlusShell({ initialLayers = [] }: { initialLayers?: GeoPlusLa
           settings={settings}
           zoomToLayerRequest={zoomToLayerRequest}
           zoomToFeatureRequest={zoomToFeatureRequest}
+          isLayerLoading={isDashboardMetadataLoading || isDashboardLayerHydrating}
+          layerLoadingMessage="Loading saved map layers..."
           onToggleLayerVisibility={(layerId) => {
             setLayers((previous) => previous.map((l) => (l.id === layerId ? { ...l, visible: !l.visible } : l)));
           }}
@@ -807,12 +952,15 @@ export function GeoPlusShell({ initialLayers = [] }: { initialLayers?: GeoPlusLa
           </Button>
         ) : (
           <aside className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-lg backdrop-blur-md">
-            <GeoPlusHeader 
+            <GeoPlusHeader
               settings={settings}
               onOpenDialog={openHelpDialog}
               onToggleSidebar={() => setIsSidebarCollapsed(true)}
+              user={user}
+              isAuthLoading={isAuthLoading}
+              onLogin={handleLogin}
+              onLogout={handleLogout}
             />
-
             <div className="-mx-3 mt-3 grid w-[calc(100%+1.5rem)] grid-cols-5 border-b border-border/70 px-3">
                 {workspaceTabs.map((tab) => {
                   const isActive = activeTab === tab.id;
@@ -1056,16 +1204,20 @@ export function GeoPlusShell({ initialLayers = [] }: { initialLayers?: GeoPlusLa
         onStepClick={setActiveGuideTopicIndex}
       />
 
-      <BugFixDialog 
-        isOpen={activeHelpDialog === "bug-fix-form"} 
-        onOpenChange={(isOpen) => setActiveHelpDialog(isOpen ? "bug-fix-form" : null)} 
+      <BugFixDialog
+        isOpen={activeHelpDialog === "bug-fix-form"}
+        onOpenChange={(isOpen) => setActiveHelpDialog(isOpen ? "bug-fix-form" : null)}
+        user={user}
       />
-
       <SaveDashboardDialog
         isOpen={activeHelpDialog === "save-dashboard"}
         onOpenChange={(isOpen) => setActiveHelpDialog(isOpen ? "save-dashboard" : null)}
         layers={layers}
         settings={settings}
+        user={user}
+        projectUid={initialProjectUid}
+        projectName={initialProjectName}
+        onRequireLogin={handleLogin}
       />
 
       <AnnouncementsDialog 

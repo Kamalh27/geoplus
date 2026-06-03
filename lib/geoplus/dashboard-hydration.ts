@@ -1,6 +1,78 @@
+import JSZip from "jszip";
 import type { GeoPlusLayerItem } from "@/components/geoplus/types";
-import { parseUploadedSpatialFile } from "@/lib/geoplus/upload-parsers";
+import { getFileExtension, parseUploadedSpatialFile } from "@/lib/geoplus/upload-parsers";
 import { CORE_BACKEND_URL } from "./dashboard-storage";
+
+export function requiresDashboardLayerHydration(layer: GeoPlusLayerItem): boolean {
+  return Boolean(
+    layer.sourceUrl &&
+      (layer.layerType === "geojson" || layer.layerType === "scatterplot") &&
+      !layer.inlineData
+  );
+}
+
+function buildDashboardLayerFetchUrls(sourceUrl: string): string[] {
+  const trimmedSourceUrl = sourceUrl.trim();
+  if (!trimmedSourceUrl) {
+    return [];
+  }
+
+  if (!trimmedSourceUrl.startsWith("http")) {
+    return [
+      `${CORE_BACKEND_URL}${trimmedSourceUrl.startsWith("/") ? "" : "/"}${trimmedSourceUrl}`,
+    ];
+  }
+
+  try {
+    const parsedUrl = new URL(trimmedSourceUrl);
+    const canonicalBackendUrl = new URL(CORE_BACKEND_URL);
+    const nextUrls: string[] = [];
+
+    if (parsedUrl.pathname.startsWith("/static/uploads/dashboards/")) {
+      const canonicalDatasetUrl = new URL(
+        `${parsedUrl.pathname}${parsedUrl.search}`,
+        canonicalBackendUrl,
+      ).toString();
+      nextUrls.push(canonicalDatasetUrl);
+    }
+
+    nextUrls.push(parsedUrl.toString());
+    return [...new Set(nextUrls)];
+  } catch {
+    return [trimmedSourceUrl];
+  }
+}
+
+function getFileNameFromPath(path: string): string {
+  const pathname = path.split("?")[0] ?? path;
+  return pathname.split("/").pop() || "data";
+}
+
+async function restoreHydrationFile(blob: Blob, layer: GeoPlusLayerItem): Promise<File> {
+  const downloadedFileName = getFileNameFromPath(layer.sourceUrl ?? "");
+  const preferredFileName = layer.fileName || downloadedFileName;
+  const downloadedExtension = getFileExtension(downloadedFileName);
+  const preferredExtension = getFileExtension(preferredFileName);
+
+  if (downloadedExtension !== ".zip" || preferredExtension === ".zip") {
+    return new File([blob], preferredFileName, { type: blob.type });
+  }
+
+  const zip = await JSZip.loadAsync(blob);
+  const entries = Object.values(zip.files).filter((entry) => !entry.dir && !entry.name.startsWith("__MACOSX/"));
+
+  const exactMatch = entries.find((entry) => getFileNameFromPath(entry.name) === preferredFileName);
+  const extensionMatch = entries.find((entry) => getFileExtension(entry.name) === preferredExtension);
+  const selectedEntry = exactMatch ?? extensionMatch ?? (entries.length === 1 ? entries[0] : null);
+
+  if (!selectedEntry) {
+    throw new Error(`Saved archive for ${layer.name} did not contain a restorable dataset file.`);
+  }
+
+  const restoredBlob = await selectedEntry.async("blob");
+  const restoredFileName = getFileNameFromPath(selectedEntry.name) || preferredFileName;
+  return new File([restoredBlob], restoredFileName, { type: restoredBlob.type || blob.type });
+}
 
 /**
  * Iterates through all layers in a dashboard. If a layer was originally 
@@ -13,39 +85,51 @@ export async function hydrateDashboardLayers(
     layers.map(async (layer) => {
       // Check if it's a layer we need to hydrate into memory
       // (Deck.gl GeoJSON/Scatterplot layers require inlineData, and upload mode was mapped to 'url')
-      if (
-        layer.sourceUrl && 
-        (layer.layerType === "geojson" || layer.layerType === "scatterplot") &&
-        !layer.inlineData 
-      ) {
+      if (requiresDashboardLayerHydration(layer)) {
         try {
-          // 1. Fetch the remote zipped/raw dataset
-          // The backend now provides absolute URLs (http://localhost:8000/...), 
-          // but we keep the fallback for any old metadata files that only have relative paths.
-          const fetchUrl = layer.sourceUrl.startsWith('http') 
-            ? layer.sourceUrl 
-            : `${CORE_BACKEND_URL}${layer.sourceUrl.startsWith('/') ? '' : '/'}${layer.sourceUrl}`;
-            
-          const response = await fetch(fetchUrl);
-          if (!response.ok) throw new Error(`Failed to fetch layer data: ${response.status} ${response.statusText}`);
-          
-          // Fast fail if we accidentally get an HTML error page back instead of our zip/binary
-          const contentType = response.headers.get("content-type") || "";
-          if (contentType.includes("text/html")) {
-             throw new Error(`Expected dataset but received HTML from server at ${fetchUrl}. This usually means a 404 or backend routing error.`);
+          // 1. Fetch the remote zipped/raw dataset.
+          // Prefer the current backend origin for GeoPlus static dashboard files, then fall back
+          // to the original stored absolute URL if needed.
+          const fetchUrls = buildDashboardLayerFetchUrls(layer.sourceUrl ?? "");
+          let blob: Blob | null = null;
+          let lastFetchError: Error | null = null;
+
+          for (const fetchUrl of fetchUrls) {
+            try {
+              const response = await fetch(fetchUrl, {
+                cache: "no-store",
+                credentials: "include",
+              });
+              if (!response.ok) {
+                throw new Error(`Failed to fetch layer data: ${response.status} ${response.statusText}`);
+              }
+
+              // Fast fail if we accidentally get an HTML error page back instead of our zip/binary.
+              const contentType = response.headers.get("content-type") || "";
+              if (contentType.includes("text/html")) {
+                throw new Error(
+                  `Expected dataset but received HTML from server at ${fetchUrl}. This usually means a 404 or backend routing error.`,
+                );
+              }
+
+              blob = await response.blob();
+              break;
+            } catch (error) {
+              lastFetchError =
+                error instanceof Error ? error : new Error("Unknown dashboard layer download failure.");
+            }
           }
-          
-          const blob = await response.blob();
+
+          if (!blob) {
+            throw lastFetchError ?? new Error(`Failed to fetch layer data for ${layer.name}.`);
+          }
           
           // 2. Reconstruct a File object for the parser
           // IMPORTANT: We must use the exact original file name (layer.fileName) if available.
           // Loaders.gl and other parsers rely heavily on specific extensions to route to the correct parser.
           // Even if the backend changed the name to a random token (e.g. token.kmz), we should restore 
           // the original name (my-data.kmz) to ensure maximum compatibility.
-          const urlFileName = layer.sourceUrl.split('/').pop() || 'data.zip';
-          const originalName = layer.fileName || urlFileName;
-          
-          const file = new File([blob], originalName, { type: blob.type });
+          const file = await restoreHydrationFile(blob, layer);
 
           // 3. Run it back through our exact upload parsing logic
           const parsed = await parseUploadedSpatialFile(file);

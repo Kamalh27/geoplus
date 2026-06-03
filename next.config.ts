@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["geoplus.spadace.local"],
   turbopack: {
     resolveAlias: {
       worker_threads: "./lib/empty.ts",
@@ -31,7 +32,7 @@ const nextConfig: NextConfig = {
     // allow outbound fetches beyond a fixed vendor allowlist.
     const connectSrc = isProduction
       ? "connect-src 'self' https:"
-      : "connect-src 'self' https: http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:*";
+      : "connect-src 'self' https: http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:* http://*.spadace.local:* ws://*.spadace.local:*";
 
     const csp = [
       "default-src 'self'",

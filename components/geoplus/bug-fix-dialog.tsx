@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, useEffect } from "react";
 import Image from "next/image";
 import { Turnstile } from "@marsidev/react-turnstile";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { GeoPlusUser } from "@/components/geoplus/types";
 
 type BugFixSeverity = "low" | "medium" | "high" | "critical";
 
@@ -38,11 +39,18 @@ const defaultBugFixDraft: BugFixDraft = {
 type BugFixDialogProps = {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
+  user: GeoPlusUser | null;
 };
 
-export function BugFixDialog({ isOpen, onOpenChange }: BugFixDialogProps) {
+export function BugFixDialog({ isOpen, onOpenChange, user }: BugFixDialogProps) {
   const [bugFixDraft, setBugFixDraft] = useState<BugFixDraft>(defaultBugFixDraft);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user && !bugFixDraft.isAnonymous) {
+      setBugFixDraft(prev => ({ ...prev, email: user.email }));
+    }
+  }, [user, bugFixDraft.isAnonymous]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -56,8 +64,8 @@ export function BugFixDialog({ isOpen, onOpenChange }: BugFixDialogProps) {
       return;
     }
 
-    if (!bugFixDraft.isAnonymous && (!bugFixDraft.email.trim() || !bugFixDraft.password?.trim())) {
-      setStatusMessage("Email and password are required for authenticated submission.");
+    if (!bugFixDraft.isAnonymous && !user && (!bugFixDraft.email.trim() || !bugFixDraft.password?.trim())) {
+      setStatusMessage("Email and password are required for guest authenticated submission.");
       return;
     }
 
@@ -125,7 +133,7 @@ export function BugFixDialog({ isOpen, onOpenChange }: BugFixDialogProps) {
             </label>
           </div>
 
-          {!bugFixDraft.isAnonymous && (
+          {!bugFixDraft.isAnonymous && !user && (
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="space-y-1">
                 <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Contact Email</span>
@@ -147,6 +155,13 @@ export function BugFixDialog({ isOpen, onOpenChange }: BugFixDialogProps) {
                   required={!bugFixDraft.isAnonymous}
                 />
               </label>
+            </div>
+          )}
+
+          {!bugFixDraft.isAnonymous && user && (
+            <div className="rounded-md border border-border/50 bg-accent/5 p-2 px-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Submitting as</p>
+              <p className="text-sm font-medium text-foreground">{user.name} ({user.email})</p>
             </div>
           )}
 

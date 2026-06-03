@@ -4,7 +4,23 @@ import type { GeoPlusLayerItem } from "@/components/geoplus/types";
 /**
  * Backend URL for core services.
  */
-export const CORE_BACKEND_URL = "http://localhost:8000";
+const DEFAULT_CORE_BACKEND_URL = "http://localhost:8000";
+
+function normalizeAbsoluteUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    return new URL(trimmed).toString().replace(/\/$/, "");
+  } catch {
+    return null;
+  }
+}
+
+export const CORE_BACKEND_URL =
+  normalizeAbsoluteUrl(process.env.NEXT_PUBLIC_CORE_BACKEND_URL) ??
+  normalizeAbsoluteUrl(process.env.NEXT_PUBLIC_API_BASE_URL) ??
+  DEFAULT_CORE_BACKEND_URL;
 
 /**
  * Compresses a File using JSZip. Skips compression if the file is already 
@@ -37,7 +53,7 @@ export async function compressFileForUpload(file: File): Promise<File> {
  */
 export async function uploadDashboardLayerToCore(
   file: File, 
-  projectUid: string, 
+  projectUid: string | null | undefined,
   datasetName: string,
   dashboardId: string // Added dashboardId
 ): Promise<string> {
@@ -45,13 +61,16 @@ export async function uploadDashboardLayerToCore(
 
   const formData = new FormData();
   formData.append("file", compressedFile);
-  formData.append("project_uid", projectUid);
+  if (projectUid && projectUid.trim()) {
+    formData.append("project_uid", projectUid.trim());
+  }
   formData.append("dataset_name", datasetName);
   formData.append("dashboard_id", dashboardId); // Send dashboard_id to backend
   
   const response = await fetch(`${CORE_BACKEND_URL}/api/v1/geoplus/uploads/datasets`, {
     method: 'POST',
     body: formData,
+    credentials: 'include',
   });
 
   if (!response.ok) {
@@ -119,7 +138,7 @@ async function optimizeImage(dataUrl: string, maxDimension = 1920, quality = 0.8
  */
 export async function prepareLayersForSave(
   layers: GeoPlusLayerItem[],
-  projectUid: string,
+  projectUid: string | null | undefined,
   dashboardId: string // Added dashboardId
 ): Promise<GeoPlusLayerItem[]> {
   return Promise.all(layers.map(async (layer) => {

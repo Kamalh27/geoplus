@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3001",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3001",
     "lint": "eslint",
     "test:e2e": "playwright test",
     "test:tilesets": "node --experimental-specifier-resolution=node --test --experimental-strip-types lib/geoplus/tilesets/*.test.ts",

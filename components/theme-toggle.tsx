@@ -39,11 +39,11 @@ export function ThemeToggle({ className }: { className?: string }) {
     <Button
       type="button"
       variant="ghost"
-      size="icon-sm"
+      size="icon"
       onClick={toggleTheme}
       disabled={!isLoaded}
       className={cn(
-        "rounded-md !text-foreground hover:!bg-accent hover:!text-foreground [&_svg]:!text-foreground hover:[&_svg]:!text-foreground",
+        "size-9 rounded-xl border border-border/80 bg-background/85 !text-foreground shadow-sm backdrop-blur-sm hover:!bg-accent hover:!text-foreground [&_svg]:!text-foreground hover:[&_svg]:!text-foreground",
         !isLoaded ? "cursor-wait opacity-70" : null,
         className,
       )}

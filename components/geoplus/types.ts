@@ -1,3 +1,11 @@
+export type GeoPlusUser = {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
+  tenantId?: number;
+};
+
 export type NominatimSearchResult = {
   display_name: string;
   lat: string;

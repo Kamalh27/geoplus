@@ -16,6 +16,7 @@ import { isCogMapLibreLayer, syncCogMapLibreLayer } from "@/lib/geoplus/tilesets
 import { isPmtilesMapLibreLayer, syncPmtilesMapLibreLayer } from "@/lib/geoplus/tilesets/pmtiles-maplibre";
 import { isMbtilesMapLibreLayer, syncMbtilesMapLibreLayer } from "@/lib/geoplus/tilesets/mbtiles-maplibre";
 import { isZarrMapLibreLayer, syncZarrMapLibreLayer } from "@/lib/geoplus/tilesets/zarr-maplibre";
+import { syncMapLibreTilesetLayer } from "@/lib/geoplus/tilesets/maplibre-tile-layer-scripts";
 
 import { getLayerColorRampColors } from "@/lib/geoplus/layer-helpers";
 import { humanizeColumnName } from "@/lib/geoplus/duckdb-spatial-analytics";
@@ -47,7 +48,6 @@ type LayerStyleSpec = {
   line: [number, number, number];
   point: [number, number, number];
   label: [number, number, number];
-  fillOpacity: number;
   lineWidth: number;
   pointRadius: number;
   labelSize: number;
@@ -65,12 +65,6 @@ type DeckLabelPoint = {
   text: string;
 };
 
-type DeckMarkerSymbolPoint = {
-  position: [number, number];
-  symbol: string;
-  color: [number, number, number];
-};
-
 type DeckImageMarkerPoint = {
   position: [number, number];
   color: [number, number, number];
@@ -86,10 +80,10 @@ type AttributeColorSpec = {
 
 const LAYER_STYLE_PRESETS: Record<GeoPlusLayerStylePreset, LayerStyleColors> = {
   emerald: {
-    fill: [34, 197, 94],
-    line: [20, 184, 166],
-    point: [6, 182, 212],
-    label: [15, 118, 110],
+    fill: [46, 125, 78],
+    line: [11, 79, 54],
+    point: [52, 211, 153],
+    label: [8, 63, 43],
   },
   sky: {
     fill: [56, 189, 248],
@@ -156,6 +150,7 @@ const getManagedMapLibreIds = (layerId: string) => {
     pointLayerId: `${MAPLIBRE_LAYER_PREFIX}${safeId}-point`,
     markerSymbolLayerId: `${MAPLIBRE_LAYER_PREFIX}${safeId}-marker`,
     labelLayerId: `${MAPLIBRE_LAYER_PREFIX}${safeId}-label`,
+    rasterLayerId: `${MAPLIBRE_LAYER_PREFIX}${safeId}-raster`,
   };
 };
 
@@ -231,6 +226,27 @@ const parseHexColor = (value: string | undefined, fallback: [number, number, num
 
 const getLayerOpacity = (layer: GeoPlusLayerItem) => clampOpacity(layer.opacity);
 
+const getScaleAwareDefaultPointRadius = (layer: GeoPlusLayerItem) => {
+  if (layer.uploadScale === "large") {
+    return 2.25;
+  }
+  if (layer.uploadScale === "medium") {
+    return 3.25;
+  }
+  return 5;
+};
+
+const getScaleAwareDefaultLineWidth = (layer: GeoPlusLayerItem) => {
+  if (layer.uploadScale === "large") {
+    return 1.25;
+  }
+  if (layer.uploadScale === "medium") {
+    return 1.75;
+  }
+  return 2;
+};
+
+
 const getLayerStyleColors = (layer: GeoPlusLayerItem) => {
   const preset = layer.stylePreset;
   return preset ? (LAYER_STYLE_PRESETS[preset] ?? LAYER_STYLE_PRESETS.emerald) : LAYER_STYLE_PRESETS.emerald;
@@ -246,9 +262,8 @@ const getLayerStyleSpec = (layer: GeoPlusLayerItem): LayerStyleSpec => {
     line: parseHexColor(config?.lineColor, presetColors.line),
     point: parseHexColor(config?.pointColor, presetColors.point),
     label: parseHexColor(config?.labelColor, presetColors.label),
-    fillOpacity: clampNumber(config?.fillOpacity, 0, 1, 0.18),
-    lineWidth: clampNumber(config?.lineWidth, 0.5, 12, 2),
-    pointRadius: clampNumber(config?.pointRadius, 2, 24, 5),
+    lineWidth: clampNumber(config?.lineWidth, 0.5, 12, getScaleAwareDefaultLineWidth(layer)),
+    pointRadius: clampNumber(config?.pointRadius, 2, 24, getScaleAwareDefaultPointRadius(layer)),
     labelSize: clampNumber(config?.labelSize, 9, 28, 13),
     markerStyle: isGeoPlusMarkerStyle(config?.markerStyle) ? config.markerStyle : "solid",
     markerSymbol: isGeoPlusMarkerSymbol(config?.markerSymbol) ? config.markerSymbol : "dot",
@@ -262,7 +277,12 @@ const getLayerStyleSpec = (layer: GeoPlusLayerItem): LayerStyleSpec => {
 
 const withAlpha = (rgb: [number, number, number], alpha: number): [number, number, number, number] => [rgb[0], rgb[1], rgb[2], alpha];
 const rgbToCss = (rgb: [number, number, number]) => `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
-const isDeckTileLayerType = (layerType: GeoPlusLayerType) => layerType === "mvt" || layerType === "raster-tile" || layerType === "wms";
+// MVT stays in deck.gl — MapLibre requires a source-layer name we don't have at layer-add time.
+const isDeckTileLayerType = (layerType: GeoPlusLayerType) => layerType === "mvt";
+const isMapLibreRasterTileType = (layerType: GeoPlusLayerType) => layerType === "raster-tile" || layerType === "wms";
+const isMapLibreGeoJsonLayerType = (layerType: GeoPlusLayerType) => layerType === "geojson" || layerType === "scatterplot";
+const usesImageMarkerStyle = (styleSpec: LayerStyleSpec) =>
+  styleSpec.markerStyle === "image" && Boolean(styleSpec.customMarkerDataUrl);
 const getInteractionFieldLabel = (layer: GeoPlusLayerItem, field: string) =>
   layer.interactionConfig?.fieldDisplayNames?.[field]?.trim() || humanizeColumnName(field);
 
@@ -299,6 +319,94 @@ const extractScatterPoints = (inlineData: unknown): DeckPoint[] => {
   }
 
   return points;
+};
+
+const getScatterAggregationTarget = (layer: GeoPlusLayerItem, pointCount: number) => {
+  if (layer.uploadScale === "large") {
+    return Math.min(pointCount, 3500);
+  }
+  if (layer.uploadScale === "medium") {
+    return Math.min(pointCount, 9000);
+  }
+  return null;
+};
+
+const aggregateScatterPoints = (points: DeckPoint[], targetBucketCount: number): DeckPoint[] => {
+  if (points.length === 0 || points.length <= targetBucketCount) {
+    return points;
+  }
+
+  let minLng = Number.POSITIVE_INFINITY;
+  let minLat = Number.POSITIVE_INFINITY;
+  let maxLng = Number.NEGATIVE_INFINITY;
+  let maxLat = Number.NEGATIVE_INFINITY;
+
+  for (const point of points) {
+    const [lng, lat] = point.position;
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+      continue;
+    }
+    minLng = Math.min(minLng, lng);
+    minLat = Math.min(minLat, lat);
+    maxLng = Math.max(maxLng, lng);
+    maxLat = Math.max(maxLat, lat);
+  }
+
+  if (!Number.isFinite(minLng) || !Number.isFinite(minLat) || !Number.isFinite(maxLng) || !Number.isFinite(maxLat)) {
+    return points;
+  }
+
+  const spanLng = Math.max(maxLng - minLng, 1e-6);
+  const spanLat = Math.max(maxLat - minLat, 1e-6);
+  const sideBuckets = Math.max(1, Math.ceil(Math.sqrt(targetBucketCount)));
+  const lngStep = Math.max(spanLng / sideBuckets, 1e-5);
+  const latStep = Math.max(spanLat / sideBuckets, 1e-5);
+
+  type AggregatedScatterPoint = {
+    lngSum: number;
+    latSum: number;
+    weightSum: number;
+    count: number;
+    properties: Record<string, unknown>;
+  };
+
+  const buckets = new Map<string, AggregatedScatterPoint>();
+
+  for (const point of points) {
+    const [lng, lat] = point.position;
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+      continue;
+    }
+
+    const bucketLng = Math.floor((lng - minLng) / lngStep);
+    const bucketLat = Math.floor((lat - minLat) / latStep);
+    const bucketKey = `${bucketLng}:${bucketLat}`;
+    const existing = buckets.get(bucketKey);
+    if (existing) {
+      existing.lngSum += lng;
+      existing.latSum += lat;
+      existing.weightSum += Math.max(1, Number.isFinite(point.weight) ? point.weight : 1);
+      existing.count += 1;
+      continue;
+    }
+
+    buckets.set(bucketKey, {
+      lngSum: lng,
+      latSum: lat,
+      weightSum: Math.max(1, Number.isFinite(point.weight) ? point.weight : 1),
+      count: 1,
+      properties: { ...point.properties },
+    });
+  }
+
+  return [...buckets.values()].map((bucket) => ({
+    position: [bucket.lngSum / bucket.count, bucket.latSum / bucket.count],
+    weight: bucket.weightSum,
+    properties: {
+      ...bucket.properties,
+      __point_count: bucket.count,
+    },
+  }));
 };
 
 type AnchorBounds = {
@@ -386,6 +494,23 @@ const getGeometryAnchor = (geometryValue: unknown): [number, number] | null => {
     return null;
   }
   return [(bounds.minLng + bounds.maxLng) / 2, (bounds.minLat + bounds.maxLat) / 2];
+};
+
+/**
+ * Returns true when the feature collection contains at least one Polygon or
+ * MultiPolygon feature. Used to decide whether to enable polygon fill in
+ * deck.gl GeoJsonLayer — enabling fill for pure line/point data causes
+ * transparent-polygon colour accumulation that renders as false banding.
+ */
+const hasPolygonFeatures = (value: unknown): boolean => {
+  const geojson = asRecord(value);
+  if (!geojson || !Array.isArray(geojson.features)) return false;
+  return (geojson.features as unknown[]).some((f) => {
+    const feature = asRecord(f);
+    const geometry = asRecord(feature?.geometry);
+    if (!geometry || typeof geometry.type !== "string") return false;
+    return geometry.type === "Polygon" || geometry.type === "MultiPolygon" || geometry.type === "GeometryCollection";
+  });
 };
 
 const getFeatureCollection = (value: unknown): GeoJSON.FeatureCollection | null => {
@@ -570,41 +695,6 @@ const toLabelText = (value: unknown): string | null => {
   return text.length > 0 ? text : null;
 };
 
-const getLayerSymbolMarkerPoints = (
-  layer: GeoPlusLayerItem,
-  styleSpec: LayerStyleSpec,
-  colorSpec: AttributeColorSpec | null,
-): DeckMarkerSymbolPoint[] => {
-  const source = getFeatureCollection(layer.inlineData ?? layer.rawInlineData);
-  if (!source) {
-    return [];
-  }
-
-  const symbol = getLayerMarkerSymbol(styleSpec);
-  const markerPoints: DeckMarkerSymbolPoint[] = [];
-  for (const feature of source.features) {
-    const featureRecord = asRecord(feature);
-    const geometry = asRecord(featureRecord?.geometry);
-    if (!geometry || geometry.type !== "Point") {
-      continue;
-    }
-
-    const coordinates = isArrayOrTypedArray(geometry.coordinates) ? geometry.coordinates : [];
-    const longitude = Number(coordinates[0]);
-    const latitude = Number(coordinates[1]);
-    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
-      continue;
-    }
-
-    markerPoints.push({
-      position: [longitude, latitude],
-      symbol,
-      color: getAttributeColor(feature, colorSpec, styleSpec.point),
-    });
-  }
-
-  return markerPoints;
-};
 
 const getLayerImageMarkerPoints = (
   layer: GeoPlusLayerItem,
@@ -674,113 +764,145 @@ const getLayerLabelPoints = (layer: GeoPlusLayerItem): DeckLabelPoint[] => {
   return labelPoints;
 };
 
+// ─── Surgical layer sync ──────────────────────────────────────────────────────
+//
+// Previously this function removed every geoplus-prefixed layer and source on
+// each render call, then rebuilt them from scratch.  That caused two problems:
+//
+//  1. Raster layers (COG, PMTiles, MBTiles) re-fetched all tiles every render
+//     cycle → visible horizontal banding / flickering during the reload.
+//  2. Vector sources lost their cached tile data on every style update.
+//
+// The new implementation tracks which layer IDs *should* be present and
+// removes only those that are no longer needed, then adds/updates the rest.
+
+const buildExpectedLayerIds = (layers: GeoPlusLayerItem[]): Set<string> => {
+  const ids = new Set<string>();
+  for (const layer of layers) {
+    if (!layer.visible) continue;
+    // These manage their own IDs internally.
+    if (isCogMapLibreLayer(layer) || isPmtilesMapLibreLayer(layer) || isMbtilesMapLibreLayer(layer) || isZarrMapLibreLayer(layer)) {
+      continue;
+    }
+    // MVT renders via deck.gl.
+    if (isDeckTileLayerType(layer.layerType)) continue;
+
+    const ids_ = getManagedMapLibreIds(layer.id);
+
+    if (isMapLibreRasterTileType(layer.layerType)) {
+      ids.add(ids_.rasterLayerId);
+      continue;
+    }
+
+    if (isMapLibreGeoJsonLayerType(layer.layerType)) {
+      const styleSpec = getLayerStyleSpec(layer);
+      // Image marker style renders via deck.gl IconLayer.
+      if (usesImageMarkerStyle(styleSpec)) continue;
+      ids.add(ids_.fillLayerId);
+      ids.add(ids_.lineLayerId);
+      ids.add(ids_.pointLayerId);
+      ids.add(ids_.markerSymbolLayerId);
+      ids.add(ids_.labelLayerId);
+    }
+  }
+  return ids;
+};
+
+const removeStaleMapLibreLayers = (map: maplibregl.Map, expectedLayerIds: Set<string>) => {
+  const style = map.getStyle();
+
+  // Remove layers (in reverse order to avoid dangling source references).
+  const staleLayers = [...(style.layers ?? [])]
+    .reverse()
+    .filter((l) => l.id.startsWith(MAPLIBRE_LAYER_PREFIX) && !expectedLayerIds.has(l.id));
+
+  for (const l of staleLayers) {
+    if (map.getLayer(l.id)) {
+      map.removeLayer(l.id);
+    }
+  }
+
+  // Remove sources that no longer have any associated layers.
+  const remainingLayerSources = new Set(
+    (map.getStyle().layers ?? [])
+      .filter((l) => "source" in l)
+      .map((l) => (l as { source?: string }).source)
+      .filter(Boolean),
+  );
+  for (const sourceId of Object.keys(style.sources ?? {})) {
+    if (sourceId.startsWith(MAPLIBRE_LAYER_PREFIX) && !remainingLayerSources.has(sourceId)) {
+      if (map.getSource(sourceId)) {
+        map.removeSource(sourceId);
+      }
+    }
+  }
+};
+
 export const syncMapLibreUserLayers = (map: maplibregl.Map, layers: GeoPlusLayerItem[]) => {
   if (!map.isStyleLoaded()) {
     return;
   }
 
-  const style = map.getStyle();
-  const styleLayers = [...(style.layers ?? [])].reverse();
-
-  for (const layer of styleLayers) {
-    if (layer.id.startsWith(MAPLIBRE_LAYER_PREFIX) && map.getLayer(layer.id)) {
-      map.removeLayer(layer.id);
-    }
-  }
-
-  const styleSources = style.sources ?? {};
-  for (const sourceId of Object.keys(styleSources)) {
-    if (sourceId.startsWith(MAPLIBRE_LAYER_PREFIX) && map.getSource(sourceId)) {
-      map.removeSource(sourceId);
-    }
-  }
+  const expectedLayerIds = buildExpectedLayerIds(layers);
+  removeStaleMapLibreLayers(map, expectedLayerIds);
 
   for (const layer of layers) {
-    if (layer.engine !== "maplibre" || !layer.visible) {
+    if (!layer.visible) {
       continue;
     }
 
-    if (isDeckTileLayerType(layer.layerType) && !isPmtilesMapLibreLayer(layer) && !isCogMapLibreLayer(layer) && !isMbtilesMapLibreLayer(layer) && !isZarrMapLibreLayer(layer)) {
-      continue;
-    }
+    // ── Specialized tileset sync functions ───────────────────────────────────
 
-    const ids = getManagedMapLibreIds(layer.id);
-    const styleSpec = getLayerStyleSpec(layer);
-    const attributeColorSpec = buildAttributeColorSpec(layer, styleSpec);
-    const layerOpacity = getLayerOpacity(layer);
     if (isCogMapLibreLayer(layer)) {
-      syncCogMapLibreLayer({
-        map,
-        layer,
-        layerOpacity,
-      });
+      syncCogMapLibreLayer({ map, layer, layerOpacity: getLayerOpacity(layer) });
       continue;
     }
     if (isPmtilesMapLibreLayer(layer)) {
+      const styleSpec = getLayerStyleSpec(layer);
       void syncPmtilesMapLibreLayer({
-        map,
-        layer,
-        layerOpacity,
-        styleColors: {
-          fill: styleSpec.fill,
-          line: styleSpec.line,
-          point: styleSpec.point,
-        },
+        map, layer, layerOpacity: getLayerOpacity(layer),
+        styleColors: { fill: styleSpec.fill, line: styleSpec.line, point: styleSpec.point },
       });
       continue;
     }
     if (isMbtilesMapLibreLayer(layer)) {
+      const styleSpec = getLayerStyleSpec(layer);
       void syncMbtilesMapLibreLayer({
-        map,
-        layer,
-        layerOpacity,
-        styleColors: {
-          fill: styleSpec.fill,
-          line: styleSpec.line,
-          point: styleSpec.point,
-        },
+        map, layer, layerOpacity: getLayerOpacity(layer),
+        styleColors: { fill: styleSpec.fill, line: styleSpec.line, point: styleSpec.point },
       });
       continue;
     }
     if (isZarrMapLibreLayer(layer)) {
-      void syncZarrMapLibreLayer({
-        map,
-        layer,
-        layerOpacity,
-      });
+      void syncZarrMapLibreLayer({ map, layer, layerOpacity: getLayerOpacity(layer) });
       continue;
     }
-    if (layer.layerType === "geojson") {
+
+    // MVT renders via deck.gl.
+    if (isDeckTileLayerType(layer.layerType)) continue;
+
+    const ids = getManagedMapLibreIds(layer.id);
+    const layerOpacity = getLayerOpacity(layer);
+
+    // ── Raster tile layers (raster-tile, wms) ────────────────────────────────
+
+    if (isMapLibreRasterTileType(layer.layerType)) {
+      syncMapLibreTilesetLayer({ map, layer, sourceId: ids.sourceId, rasterLayerId: ids.rasterLayerId, layerOpacity });
+      continue;
+    }
+
+    // ── GeoJSON / scatterplot layers ─────────────────────────────────────────
+
+    if (isMapLibreGeoJsonLayerType(layer.layerType)) {
+      const styleSpec = getLayerStyleSpec(layer);
+      // Image marker style uses deck.gl IconLayer — skip here.
+      if (usesImageMarkerStyle(styleSpec)) continue;
+
+      const attributeColorSpec = buildAttributeColorSpec(layer, styleSpec);
       const data = layer.inlineData ?? layer.sourceUrl;
       if (!data) {
         continue;
       }
-
-      map.addSource(ids.sourceId, {
-        type: "geojson",
-        data: data as string | GeoJSON.GeoJSON,
-      });
-
-      map.addLayer({
-        id: ids.fillLayerId,
-        type: "fill",
-        source: ids.sourceId,
-        paint: {
-          "fill-color": getMapLibreAttributeColorExpression(attributeColorSpec, styleSpec.fill),
-          "fill-opacity": styleSpec.fillOpacity * layerOpacity,
-        },
-      });
-
-      map.addLayer({
-        id: ids.lineLayerId,
-        type: "line",
-        source: ids.sourceId,
-        paint: {
-          "line-color": getMapLibreAttributeColorExpression(attributeColorSpec, styleSpec.line),
-          "line-width": styleSpec.lineWidth,
-          "line-opacity": 0.9 * layerOpacity,
-        },
-      });
 
       const isRingStyle = styleSpec.markerStyle === "ring";
       const isGlowStyle = styleSpec.markerStyle === "glow";
@@ -790,64 +912,140 @@ export const syncMapLibreUserLayers = (map: maplibregl.Map, layers: GeoPlusLayer
       const markerOpacity = isSymbolStyle ? 0 : isRingStyle ? 0.18 * layerOpacity : isGlowStyle ? 0.62 * layerOpacity : layerOpacity;
       const markerStrokeWidth = isRingStyle ? 2.4 : isGlowStyle ? 1.6 : 1.2;
       const markerStrokeColor = getMapLibreAttributeColorExpression(attributeColorSpec, styleSpec.point);
+      const fillColorExpr = getMapLibreAttributeColorExpression(attributeColorSpec, styleSpec.fill);
+      const lineColorExpr = getMapLibreAttributeColorExpression(attributeColorSpec, styleSpec.line);
+      const pointColorExpr = getMapLibreAttributeColorExpression(attributeColorSpec, styleSpec.point);
 
-      map.addLayer({
-        id: ids.pointLayerId,
-        type: "circle",
-        source: ids.sourceId,
-        filter: ["==", ["geometry-type"], "Point"],
-        paint: {
-          "circle-radius": markerRadius,
-          "circle-color": getMapLibreAttributeColorExpression(attributeColorSpec, styleSpec.point),
-          "circle-opacity": markerOpacity,
-          "circle-stroke-width": markerStrokeWidth,
-          "circle-stroke-color": markerStrokeColor,
-          "circle-blur": isGlowStyle ? 0.34 : 0,
-        },
-      });
+      // Source — add once; update data if already present.
+      if (!map.getSource(ids.sourceId)) {
+        map.addSource(ids.sourceId, {
+          type: "geojson",
+          data: data as string | GeoJSON.GeoJSON,
+        });
+      } else {
+        (map.getSource(ids.sourceId) as maplibregl.GeoJSONSource).setData(
+          data as string | GeoJSON.GeoJSON,
+        );
+      }
 
-      if (isSymbolStyle) {
+      // Fill layer
+      if (!map.getLayer(ids.fillLayerId)) {
         map.addLayer({
-          id: ids.markerSymbolLayerId,
-          type: "symbol",
+          id: ids.fillLayerId,
+          type: "fill",
+          source: ids.sourceId,
+          paint: {
+            "fill-color": fillColorExpr,
+            "fill-opacity": layerOpacity,
+          },
+        });
+      } else {
+        map.setPaintProperty(ids.fillLayerId, "fill-color", fillColorExpr);
+        map.setPaintProperty(ids.fillLayerId, "fill-opacity", layerOpacity);
+      }
+
+      // Line layer
+      if (!map.getLayer(ids.lineLayerId)) {
+        map.addLayer({
+          id: ids.lineLayerId,
+          type: "line",
+          source: ids.sourceId,
+          paint: {
+            "line-color": lineColorExpr,
+            "line-width": styleSpec.lineWidth,
+            "line-opacity": 0.9 * layerOpacity,
+          },
+        });
+      } else {
+        map.setPaintProperty(ids.lineLayerId, "line-color", lineColorExpr);
+        map.setPaintProperty(ids.lineLayerId, "line-width", styleSpec.lineWidth);
+        map.setPaintProperty(ids.lineLayerId, "line-opacity", 0.9 * layerOpacity);
+      }
+
+      // Circle / point layer
+      if (!map.getLayer(ids.pointLayerId)) {
+        map.addLayer({
+          id: ids.pointLayerId,
+          type: "circle",
           source: ids.sourceId,
           filter: ["==", ["geometry-type"], "Point"],
-          layout: {
-            "text-field": getLayerMarkerSymbol(styleSpec),
-            "text-size": clampInteger(styleSpec.pointRadius * 2.4, 12, 56, 18),
-            "text-anchor": "center",
-            "text-allow-overlap": true,
-          },
           paint: {
-            "text-color": getMapLibreAttributeColorExpression(attributeColorSpec, styleSpec.point),
-            "text-opacity": 0.92 * layerOpacity,
-            "text-halo-color": "rgba(15,23,42,0.78)",
-            "text-halo-width": 1.1,
+            "circle-radius": markerRadius,
+            "circle-color": pointColorExpr,
+            "circle-opacity": markerOpacity,
+            "circle-stroke-width": markerStrokeWidth,
+            "circle-stroke-color": markerStrokeColor,
+            "circle-blur": isGlowStyle ? 0.34 : 0,
           },
         });
+      } else {
+        map.setPaintProperty(ids.pointLayerId, "circle-radius", markerRadius);
+        map.setPaintProperty(ids.pointLayerId, "circle-color", pointColorExpr);
+        map.setPaintProperty(ids.pointLayerId, "circle-opacity", markerOpacity);
+        map.setPaintProperty(ids.pointLayerId, "circle-stroke-width", markerStrokeWidth);
+        map.setPaintProperty(ids.pointLayerId, "circle-stroke-color", markerStrokeColor);
+        map.setPaintProperty(ids.pointLayerId, "circle-blur", isGlowStyle ? 0.34 : 0);
       }
 
+      // Symbol marker (only for symbol style)
+      if (isSymbolStyle) {
+        if (!map.getLayer(ids.markerSymbolLayerId)) {
+          map.addLayer({
+            id: ids.markerSymbolLayerId,
+            type: "symbol",
+            source: ids.sourceId,
+            filter: ["==", ["geometry-type"], "Point"],
+            layout: {
+              "text-field": getLayerMarkerSymbol(styleSpec),
+              "text-size": clampInteger(styleSpec.pointRadius * 2.4, 12, 56, 18),
+              "text-anchor": "center",
+              "text-allow-overlap": true,
+            },
+            paint: {
+              "text-color": pointColorExpr,
+              "text-opacity": 0.92 * layerOpacity,
+              "text-halo-color": "rgba(15,23,42,0.78)",
+              "text-halo-width": 1.1,
+            },
+          });
+        } else {
+          map.setPaintProperty(ids.markerSymbolLayerId, "text-color", pointColorExpr);
+          map.setPaintProperty(ids.markerSymbolLayerId, "text-opacity", 0.92 * layerOpacity);
+        }
+      } else if (map.getLayer(ids.markerSymbolLayerId)) {
+        map.removeLayer(ids.markerSymbolLayerId);
+      }
+
+      // Label layer
       const labelField = layer.labelField?.trim();
       if (layer.labelEnabled && labelField) {
-        map.addLayer({
-          id: ids.labelLayerId,
-          type: "symbol",
-          source: ids.sourceId,
-          layout: {
-            "text-field": ["to-string", ["coalesce", ["get", labelField], ""]] as unknown as string,
-            "text-size": styleSpec.labelSize,
-            "text-font": ["Open Sans Semibold", "Arial Unicode MS Regular"],
-            "text-offset": [0, 1.08],
-            "text-anchor": "top",
-          },
-          paint: {
-            "text-color": rgbToCss(styleSpec.label),
-            "text-opacity": layerOpacity,
-            "text-halo-color": "rgba(15,23,42,0.85)",
-            "text-halo-width": 1.2,
-          },
-        });
+        if (!map.getLayer(ids.labelLayerId)) {
+          map.addLayer({
+            id: ids.labelLayerId,
+            type: "symbol",
+            source: ids.sourceId,
+            layout: {
+              "text-field": ["to-string", ["coalesce", ["get", labelField], ""]] as unknown as string,
+              "text-size": styleSpec.labelSize,
+              "text-font": ["Open Sans Semibold", "Arial Unicode MS Regular"],
+              "text-offset": [0, 1.08],
+              "text-anchor": "top",
+            },
+            paint: {
+              "text-color": rgbToCss(styleSpec.label),
+              "text-opacity": layerOpacity,
+              "text-halo-color": "rgba(15,23,42,0.85)",
+              "text-halo-width": 1.2,
+            },
+          });
+        } else {
+          map.setPaintProperty(ids.labelLayerId, "text-color", rgbToCss(styleSpec.label));
+          map.setPaintProperty(ids.labelLayerId, "text-opacity", layerOpacity);
+        }
+      } else if (map.getLayer(ids.labelLayerId)) {
+        map.removeLayer(ids.labelLayerId);
       }
+
       continue;
     }
   }
@@ -857,60 +1055,68 @@ export const buildDeckUserLayers = (layers: GeoPlusLayerItem[]): DeckLayer[] => 
   const deckLayers: DeckLayer[] = [];
 
   for (const layer of layers) {
-    if (!layer.visible) {
-      continue;
-    }
-
-    if (isPmtilesMapLibreLayer(layer) || isCogMapLibreLayer(layer) || isMbtilesMapLibreLayer(layer) || isZarrMapLibreLayer(layer)) {
-      continue;
-    }
-
-    if (layer.engine !== "deck" && !isDeckTileLayerType(layer.layerType)) {
-      continue;
-    }
+    if (!layer.visible) continue;
+    if (isPmtilesMapLibreLayer(layer) || isCogMapLibreLayer(layer) || isMbtilesMapLibreLayer(layer) || isZarrMapLibreLayer(layer)) continue;
 
     const layerId = `user-${toSafeLayerId(layer.id)}`;
     const styleSpec = getLayerStyleSpec(layer);
-    const attributeColorSpec = buildAttributeColorSpec(layer, styleSpec);
     const layerOpacity = getLayerOpacity(layer);
+
+    // MVT tiles → deck.gl (MapLibre requires a source-layer name not available at add time).
+    if (isDeckTileLayerType(layer.layerType)) {
+      const tilesetLayer = buildDeckTilesetLayer({
+        layer, layerId, layerOpacity,
+        styleColors: { fill: styleSpec.fill, line: styleSpec.line },
+      });
+      if (tilesetLayer) deckLayers.push(tilesetLayer);
+      continue;
+    }
+
+    // All other user layers: only image marker style stays in deck.gl (needs IconLayer).
+    // Everything else (solid, ring, glow, symbol) is handled by MapLibre.
+    if (!isMapLibreGeoJsonLayerType(layer.layerType) || !usesImageMarkerStyle(styleSpec)) continue;
+
+    const attributeColorSpec = buildAttributeColorSpec(layer, styleSpec);
+
     if (layer.layerType === "geojson") {
       const data = layer.inlineData ?? layer.sourceUrl;
-      if (!data) {
-        continue;
-      }
-      const isRingStyle = styleSpec.markerStyle === "ring";
-      const isGlowStyle = styleSpec.markerStyle === "glow";
-      const isSymbolStyle = styleSpec.markerStyle === "symbol";
-      const isImageStyle = styleSpec.markerStyle === "image" && Boolean(styleSpec.customMarkerDataUrl);
+      if (!data) continue;
+
+      // For pure line/point data (e.g. KML scan-lines), enabling fill causes
+      // transparent-polygon alpha to accumulate across overlapping features,
+      // producing false horizontal green banding across the map.
+      const dataHasPolygons = typeof data === "string" ? false : hasPolygonFeatures(data);
+      const lineAlpha = Math.round(230 * layerOpacity);
+
+      // GeoJsonLayer handles polygon fill + line rendering; points are transparent (IconLayer handles them).
       deckLayers.push(
         new GeoJsonLayer({
           id: layerId,
           data,
           pickable: true,
           stroked: true,
-          filled: true,
+          filled: dataHasPolygons,
           pointType: "circle",
-          opacity: layerOpacity,
+          opacity: 1,
           getFillColor: (feature: unknown) =>
-            withAlpha(getAttributeColor(feature, attributeColorSpec, styleSpec.fill), Math.round(255 * styleSpec.fillOpacity)),
-          getLineColor: (feature: unknown) => withAlpha(getAttributeColor(feature, attributeColorSpec, styleSpec.line), 230),
-          getPointFillColor: (feature: unknown) =>
             withAlpha(
-              getAttributeColor(feature, attributeColorSpec, styleSpec.point),
-              isSymbolStyle || isImageStyle ? 0 : isRingStyle ? 70 : isGlowStyle ? 165 : 220,
+              getAttributeColor(feature, attributeColorSpec, styleSpec.fill),
+              Math.round(255 * layerOpacity),
             ),
+          getLineColor: (feature: unknown) =>
+            withAlpha(getAttributeColor(feature, attributeColorSpec, styleSpec.line), lineAlpha),
+          getPointFillColor: [0, 0, 0, 0],
           lineWidthUnits: "pixels",
           pointRadiusUnits: "pixels",
           lineWidthMinPixels: styleSpec.lineWidth,
-          pointRadiusMinPixels: isGlowStyle ? styleSpec.pointRadius + 2 : styleSpec.pointRadius,
+          pointRadiusMinPixels: styleSpec.pointRadius,
           getLineWidth: styleSpec.lineWidth,
-          getPointRadius: isGlowStyle ? styleSpec.pointRadius + 2 : styleSpec.pointRadius,
+          getPointRadius: styleSpec.pointRadius,
           updateTriggers: {
-            getFillColor: [styleSpec.fill, styleSpec.fillOpacity, attributeColorSpec],
-            getLineColor: [styleSpec.line, attributeColorSpec],
-            getPointFillColor: [styleSpec.point, styleSpec.markerStyle, attributeColorSpec],
+            getFillColor: [styleSpec.fill, layerOpacity, attributeColorSpec],
+            getLineColor: [styleSpec.line, layerOpacity, attributeColorSpec],
             getLineWidth: [styleSpec.lineWidth],
-            getPointRadius: [styleSpec.pointRadius, styleSpec.markerStyle],
+            getPointRadius: [styleSpec.pointRadius],
           },
         } as never),
       );
@@ -940,209 +1146,119 @@ export const buildDeckUserLayers = (layers: GeoPlusLayerItem[]): DeckLayer[] => 
         );
       }
 
-      if (isSymbolStyle) {
-        const markerPoints = getLayerSymbolMarkerPoints(layer, styleSpec, attributeColorSpec);
-        if (markerPoints.length > 0) {
-          deckLayers.push(
-            new TextLayer<DeckMarkerSymbolPoint>({
-              id: `${layerId}-marker-symbol`,
-              data: markerPoints,
-              pickable: false,
-              billboard: true,
-              sizeUnits: "pixels",
-              getPosition: (point) => point.position,
-              getText: (point) => point.symbol,
-              getColor: (point) => withAlpha(point.color, Math.round(255 * layerOpacity)),
-              getSize: clampInteger(styleSpec.pointRadius * 2.35, 12, 56, 18),
-              getTextAnchor: "middle",
-              getAlignmentBaseline: "center",
-              updateTriggers: {
-                getColor: [styleSpec.point, layerOpacity, attributeColorSpec],
-                getSize: [styleSpec.pointRadius],
-                getText: [styleSpec.markerSymbol],
-              },
+      const markerPoints = getLayerImageMarkerPoints(layer, styleSpec, attributeColorSpec);
+      if (markerPoints.length > 0) {
+        deckLayers.push(
+          new IconLayer<DeckImageMarkerPoint>({
+            id: `${layerId}-marker-image`,
+            data: markerPoints,
+            pickable: false,
+            billboard: true,
+            sizeUnits: "pixels",
+            getPosition: (point) => point.position,
+            getIcon: () => ({
+              url: styleSpec.customMarkerDataUrl!,
+              width: 128,
+              height: 128,
+              anchorY: 128,
             }),
-          );
-        }
-      }
-
-      if (isImageStyle && styleSpec.customMarkerDataUrl) {
-        const markerPoints = getLayerImageMarkerPoints(layer, styleSpec, attributeColorSpec);
-        if (markerPoints.length > 0) {
-          deckLayers.push(
-            new IconLayer<DeckImageMarkerPoint>({
-              id: `${layerId}-marker-image`,
-              data: markerPoints,
-              pickable: false,
-              billboard: true,
-              sizeUnits: "pixels",
-              getPosition: (point) => point.position,
-              getIcon: () => ({
-                url: styleSpec.customMarkerDataUrl!,
-                width: 128,
-                height: 128,
-                anchorY: 128,
-              }),
-              getColor: (point) => withAlpha(point.color, Math.round(255 * layerOpacity)),
-              getSize: clampInteger(styleSpec.pointRadius * 3.2, 14, 96, 28),
-              updateTriggers: {
-                getIcon: [styleSpec.customMarkerDataUrl],
-                getColor: [styleSpec.point, layerOpacity, attributeColorSpec],
-                getSize: [styleSpec.pointRadius],
-              },
-            }),
-          );
-        }
+            getColor: (point) => withAlpha(point.color, Math.round(255 * layerOpacity)),
+            getSize: clampInteger(styleSpec.pointRadius * 3.2, 14, 96, 28),
+            updateTriggers: {
+              getIcon: [styleSpec.customMarkerDataUrl],
+              getColor: [styleSpec.point, layerOpacity, attributeColorSpec],
+              getSize: [styleSpec.pointRadius],
+            },
+          }),
+        );
       }
       continue;
     }
 
     if (layer.layerType === "scatterplot") {
-      const scatterPoints = extractScatterPoints(layer.inlineData ?? layer.rawInlineData);
-      if (scatterPoints.length > 0) {
-        const isRingStyle = styleSpec.markerStyle === "ring";
-        const isGlowStyle = styleSpec.markerStyle === "glow";
-        const isSymbolStyle = styleSpec.markerStyle === "symbol";
-        const isImageStyle = styleSpec.markerStyle === "image" && Boolean(styleSpec.customMarkerDataUrl);
+      const rawScatterPoints = extractScatterPoints(layer.inlineData ?? layer.rawInlineData);
+      const scatterPoints =
+        rawScatterPoints.length < 2
+          ? rawScatterPoints
+          : aggregateScatterPoints(rawScatterPoints, getScatterAggregationTarget(layer, rawScatterPoints.length) ?? rawScatterPoints.length);
+
+      if (scatterPoints.length === 0) continue;
+
+      // ScatterplotLayer with transparent fill acts as a halo/pickable background for image icons.
+      deckLayers.push(
+        new ScatterplotLayer<DeckPoint>({
+          id: layerId,
+          data: scatterPoints,
+          pickable: true,
+          stroked: true,
+          filled: true,
+          opacity: 1,
+          radiusUnits: "pixels",
+          radiusMinPixels: styleSpec.pointRadius,
+          getPosition: (point) => point.position,
+          getRadius: (point) =>
+            Math.max(styleSpec.pointRadius, Math.sqrt(Math.max(1, point.weight)) * styleSpec.pointRadius),
+          getFillColor: [0, 0, 0, 0],
+          getLineColor: (point) =>
+            withAlpha(getAttributeColor({ properties: point.properties }, attributeColorSpec, styleSpec.point), Math.round(220 * layerOpacity)),
+          lineWidthMinPixels: 1.2,
+          updateTriggers: {
+            getRadius: [styleSpec.pointRadius],
+            getLineColor: [styleSpec.point, layerOpacity, attributeColorSpec],
+          },
+        }),
+      );
+
+      const labelPoints = getLayerLabelPoints(layer);
+      if (labelPoints.length > 0) {
         deckLayers.push(
-          new ScatterplotLayer<DeckPoint>({
-            id: layerId,
-            data: scatterPoints,
-            pickable: true,
-            stroked: true,
-            filled: true,
-            opacity: layerOpacity,
-            radiusUnits: "pixels",
-            radiusMinPixels: isGlowStyle ? styleSpec.pointRadius + 2 : styleSpec.pointRadius,
+          new TextLayer<DeckLabelPoint>({
+            id: `${layerId}-labels`,
+            data: labelPoints,
+            pickable: false,
+            billboard: true,
+            fontWeight: 600,
+            sizeUnits: "pixels",
+            fontFamily: "system-ui, sans-serif",
             getPosition: (point) => point.position,
-            getRadius: (point) =>
-              Math.max(isGlowStyle ? styleSpec.pointRadius + 2 : styleSpec.pointRadius, Math.sqrt(Math.max(1, point.weight)) * styleSpec.pointRadius),
-            getFillColor: (point) =>
-              withAlpha(
-                getAttributeColor({ properties: point.properties }, attributeColorSpec, styleSpec.point),
-                isSymbolStyle || isImageStyle ? 0 : isRingStyle ? 70 : isGlowStyle ? 155 : 180,
-              ),
-            getLineColor: (point) => withAlpha(getAttributeColor({ properties: point.properties }, attributeColorSpec, styleSpec.point), 220),
-            lineWidthMinPixels: isRingStyle ? 2.4 : isGlowStyle ? 1.6 : 1.2,
+            getText: (point) => point.text,
+            getColor: withAlpha(styleSpec.label, Math.round(255 * layerOpacity)),
+            getSize: styleSpec.labelSize,
+            getTextAnchor: "middle",
+            getAlignmentBaseline: "bottom",
             updateTriggers: {
-              getRadius: [styleSpec.pointRadius, styleSpec.markerStyle],
-              getFillColor: [styleSpec.point, styleSpec.markerStyle, attributeColorSpec],
-              getLineColor: [styleSpec.point, attributeColorSpec],
+              getColor: [styleSpec.label, layerOpacity],
+              getSize: [styleSpec.labelSize],
             },
           }),
         );
-
-        const labelPoints = getLayerLabelPoints(layer);
-        if (labelPoints.length > 0) {
-          deckLayers.push(
-            new TextLayer<DeckLabelPoint>({
-              id: `${layerId}-labels`,
-              data: labelPoints,
-              pickable: false,
-              billboard: true,
-              fontWeight: 600,
-              sizeUnits: "pixels",
-              fontFamily: "system-ui, sans-serif",
-              getPosition: (point) => point.position,
-              getText: (point) => point.text,
-              getColor: withAlpha(styleSpec.label, Math.round(255 * layerOpacity)),
-              getSize: styleSpec.labelSize,
-              getTextAnchor: "middle",
-              getAlignmentBaseline: "bottom",
-              updateTriggers: {
-                getColor: [styleSpec.label, layerOpacity],
-                getSize: [styleSpec.labelSize],
-              },
-            }),
-          );
-        }
-
-        if (isSymbolStyle) {
-          const symbol = getLayerMarkerSymbol(styleSpec);
-          deckLayers.push(
-            new TextLayer<DeckPoint>({
-              id: `${layerId}-marker-symbol`,
-              data: scatterPoints,
-              pickable: false,
-              billboard: true,
-              sizeUnits: "pixels",
-              getPosition: (point) => point.position,
-              getText: () => symbol,
-              getColor: (point) =>
-                withAlpha(getAttributeColor({ properties: point.properties }, attributeColorSpec, styleSpec.point), Math.round(255 * layerOpacity)),
-              getSize: clampInteger(styleSpec.pointRadius * 2.35, 12, 56, 18),
-              getTextAnchor: "middle",
-              getAlignmentBaseline: "center",
-              updateTriggers: {
-                getText: [symbol],
-                getColor: [styleSpec.point, layerOpacity, attributeColorSpec],
-                getSize: [styleSpec.pointRadius],
-              },
-            }),
-          );
-        }
-
-        if (isImageStyle && styleSpec.customMarkerDataUrl) {
-          deckLayers.push(
-            new IconLayer<DeckPoint>({
-              id: `${layerId}-marker-image`,
-              data: scatterPoints,
-              pickable: false,
-              billboard: true,
-              sizeUnits: "pixels",
-              getPosition: (point) => point.position,
-              getIcon: () => ({
-                url: styleSpec.customMarkerDataUrl!,
-                width: 128,
-                height: 128,
-                anchorY: 128,
-              }),
-              getColor: (point) =>
-                withAlpha(getAttributeColor({ properties: point.properties }, attributeColorSpec, styleSpec.point), Math.round(255 * layerOpacity)),
-              getSize: clampInteger(styleSpec.pointRadius * 3.2, 14, 96, 28),
-              updateTriggers: {
-                getIcon: [styleSpec.customMarkerDataUrl],
-                getColor: [styleSpec.point, layerOpacity, attributeColorSpec],
-                getSize: [styleSpec.pointRadius],
-              },
-            }),
-          );
-        }
-        continue;
       }
 
-      if (layer.sourceUrl) {
-        deckLayers.push(
-          new GeoJsonLayer({
-            id: `${layerId}-fallback`,
-            data: layer.sourceUrl,
-            pickable: true,
-            pointType: "circle",
-            opacity: layerOpacity,
-            getPointRadius: styleSpec.pointRadius,
-            pointRadiusUnits: "pixels",
-            getFillColor: withAlpha(styleSpec.point, 180),
-            updateTriggers: {
-              getPointRadius: [styleSpec.pointRadius],
-              getFillColor: [styleSpec.point],
-            },
-          } as never),
-        );
-      }
+      deckLayers.push(
+        new IconLayer<DeckPoint>({
+          id: `${layerId}-marker-image`,
+          data: scatterPoints,
+          pickable: false,
+          billboard: true,
+          sizeUnits: "pixels",
+          getPosition: (point) => point.position,
+          getIcon: () => ({
+            url: styleSpec.customMarkerDataUrl!,
+            width: 128,
+            height: 128,
+            anchorY: 128,
+          }),
+          getColor: (point) =>
+            withAlpha(getAttributeColor({ properties: point.properties }, attributeColorSpec, styleSpec.point), Math.round(255 * layerOpacity)),
+          getSize: clampInteger(styleSpec.pointRadius * 3.2, 14, 96, 28),
+          updateTriggers: {
+            getIcon: [styleSpec.customMarkerDataUrl],
+            getColor: [styleSpec.point, layerOpacity, attributeColorSpec],
+            getSize: [styleSpec.pointRadius],
+          },
+        }),
+      );
       continue;
-    }
-
-    const tilesetLayer = buildDeckTilesetLayer({
-      layer,
-      layerId,
-      layerOpacity,
-      styleColors: {
-        fill: styleSpec.fill,
-        line: styleSpec.line,
-      },
-    });
-    if (tilesetLayer) {
-      deckLayers.push(tilesetLayer);
     }
   }
 

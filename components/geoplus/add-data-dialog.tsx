@@ -1,7 +1,7 @@
 "use client";
 
-import { type ComponentType, type FormEvent, useMemo, useState } from "react";
-import { CircleHelp, Clipboard, Database, Download, FileText, Layers3, Link2, Plus, Upload, X } from "lucide-react";
+import { type ComponentType, type FormEvent, useMemo, useRef, useState } from "react";
+import { CircleHelp, Clipboard, Database, Download, FileText, Layers3, Link2, Loader2, Plus, Upload, X } from "lucide-react";
 
 import type { GeoPlusLayerItem, GeoPlusLayerTypePreference, GeoPlusRendererPreference, GeoPlusServiceType } from "@/components/geoplus/types";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,7 @@ import {
 import { cn } from "@/lib/utils";
 
 type AddDataDialogProps = {
-  onAddLayer: (layer: GeoPlusLayerItem) => void;
+  onAddLayer: (layer: GeoPlusLayerItem) => void | Promise<void>;
   existingLayers: GeoPlusLayerItem[];
 };
 
@@ -167,6 +167,7 @@ const resolveProjectionChoice = (args: {
 };
 
 export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps) {
+  const submitInFlightRef = useRef(false);
   const sampleLayersByServiceType = useMemo(() => {
     const grouped = Object.fromEntries(serviceOptions.map((type) => [type, [] as SampleLayerOption[]])) as Record<
       GeoPlusServiceType,
@@ -179,6 +180,8 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
   }, []);
 
   const [isOpen, setIsOpen] = useState(false);
+  const [isSubmitPendingUi, setIsSubmitPendingUi] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [mode, setMode] = useState<GeoPlusAddDataMode>("upload");
   const [serviceType, setServiceType] = useState<GeoPlusServiceType>("wms");
   const [sampleServiceType, setSampleServiceType] = useState<GeoPlusServiceType>("wms");
@@ -198,6 +201,9 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
   const [selectedSampleLayerId, setSelectedSampleLayerId] = useState(sampleLayersByServiceType.wms[0]?.id ?? "");
 
   const resetForm = () => {
+    submitInFlightRef.current = false;
+    setIsSubmitPendingUi(false);
+    setIsSubmitting(false);
     setMode("upload");
     setServiceType("wms");
     setSampleServiceType("wms");
@@ -342,16 +348,22 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
     }
   };
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canSubmit) {
+    if (!canSubmit || submitInFlightRef.current) {
       return;
     }
 
+    submitInFlightRef.current = true;
+    setIsSubmitPendingUi(true);
+    setIsSubmitting(true);
     setLayerConfigError("");
     try {
       if (mode === "sample-layers" && !selectedSampleLayer) {
         setLayerConfigError("Choose a sample layer to continue.");
+        submitInFlightRef.current = false;
+        setIsSubmitPendingUi(false);
+        setIsSubmitting(false);
         return;
       }
 
@@ -369,10 +381,16 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
           : detectedPipeline;
       if (submitMode === "service" && submitServiceType === "wms" && !hasWmsLayersParam(submitServiceUrl)) {
         setLayerConfigError("WMS URLs must include a layers parameter, e.g. ?layers=workspace:layer_name.");
+        submitInFlightRef.current = false;
+        setIsSubmitPendingUi(false);
+        setIsSubmitting(false);
         return;
       }
       if (submitMode === "service" && submitServiceType === "wmts" && !hasTileTemplateParams(submitServiceUrl)) {
         setLayerConfigError("WMTS URLs must be tile templates with {z}, {x}, and {y}. Raw WMTS service endpoints are not parsed yet.");
+        submitInFlightRef.current = false;
+        setIsSubmitPendingUi(false);
+        setIsSubmitting(false);
         return;
       }
       const { engine: submitEngine, layerType: submitLayerType } = resolvePipeline({
@@ -381,8 +399,13 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
         layerTypePreference,
       });
 
+      const uploadStorageUrl =
+        submitMode === "upload"
+          ? parsedUploadLayers.find((layer) => layer.uploadStorageUrl)?.uploadStorageUrl
+          : undefined;
+
       if (submitMode === "upload" && parsedUploadLayers.length > 0) {
-        for (const layer of parsedUploadLayers) {
+        for (const [index, layer] of parsedUploadLayers.entries()) {
           const parsedLayerForSubmit = {
             ...layer,
             inlineData:
@@ -390,7 +413,8 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                 ? reprojectGeoJsonToWgs84(layer.inlineData, resolvedSourceProjection)
                 : layer.inlineData,
           };
-          
+
+          const isPrimaryLayer = index === 0;
           const layerDisplayName = parsedUploadLayers.length > 1 && layer.layerName
             ? (layerName ? `${layerName} - ${layer.layerName}` : layer.layerName)
             : layerName;
@@ -399,6 +423,7 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
             mode: submitMode,
             layerName: layerDisplayName,
             fileName,
+            fileSizeBytes,
             externalUrl,
             serviceUrl: submitServiceUrl,
             serviceType: submitServiceType,
@@ -411,14 +436,17 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
             resolvedEngine: submitEngine,
             rendererPreference,
             layerTypePreference,
+            visible: isPrimaryLayer,
+            uploadStorageUrl,
           });
-          onAddLayer(nextLayer);
+          await onAddLayer(nextLayer);
         }
       } else {
         const nextLayer = buildLayerFromAddDataInput({
           mode: submitMode,
           layerName,
           fileName,
+          fileSizeBytes,
           externalUrl,
           serviceUrl: submitServiceUrl,
           serviceType: submitServiceType,
@@ -431,13 +459,18 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
           resolvedEngine: submitEngine,
           rendererPreference,
           layerTypePreference,
+          visible: true,
+          uploadStorageUrl,
         });
 
-        onAddLayer(nextLayer);
+        await onAddLayer(nextLayer);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to add layer.";
       setLayerConfigError(message);
+      submitInFlightRef.current = false;
+      setIsSubmitPendingUi(false);
+      setIsSubmitting(false);
       return;
     }
 
@@ -627,9 +660,6 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
 
                           try {
                             const parsedLayers = await parseUploadedSpatialFile(file);
-                            for (const layer of parsedLayers) {
-                              layer.originalFile = file;
-                            }
                             setParsedUploadLayers(parsedLayers);
                           } catch (error) {
                             const message = error instanceof Error ? error.message : "Unable to parse the selected file.";
@@ -897,9 +927,27 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
                 Cancel
               </Button>
               {mode === "existing-layers" ? null : (
-                <Button type="submit" disabled={!canSubmit} className="bg-accent text-accent-foreground hover:bg-accent/90 disabled:bg-muted disabled:text-muted-foreground">
-                  <Database className="size-3.5" />
-                  Add Layer
+                <Button
+                  type="submit"
+                  disabled={!canSubmit || isSubmitting}
+                  className="bg-accent text-accent-foreground hover:bg-accent/90 disabled:bg-muted disabled:text-muted-foreground"
+                  onMouseDown={() => {
+                    if (canSubmit && !submitInFlightRef.current) {
+                      setIsSubmitPendingUi(true);
+                    }
+                  }}
+                >
+                  {isSubmitPendingUi || isSubmitting ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <Database className="size-3.5" />
+                      Add Layer
+                    </>
+                  )}
                 </Button>
               )}
             </div>

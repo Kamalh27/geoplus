@@ -1,4 +1,4 @@
-import maplibregl from "maplibre-gl";
+import type maplibregl from "maplibre-gl";
 
 import type { GeoPlusLayerItem, GeoPlusLayerType } from "@/components/geoplus/types";
 import { resolveTilesetSourceUrl } from "@/lib/geoplus/tilesets/source-url";
@@ -13,35 +13,40 @@ type SyncMapLibreTilesetLayerArgs = {
 
 type MapLibreTilesetScript = (args: SyncMapLibreTilesetLayerArgs) => boolean;
 
-const addRasterSourceAndLayer = (args: SyncMapLibreTilesetLayerArgs) => {
+const syncRasterSourceAndLayer = (args: SyncMapLibreTilesetLayerArgs) => {
   const { map, layer, sourceId, rasterLayerId, layerOpacity } = args;
   const sourceUrl = resolveTilesetSourceUrl(layer);
   if (!sourceUrl) {
     return false;
   }
 
-  map.addSource(sourceId, {
-    type: "raster",
-    tiles: [sourceUrl],
-    tileSize: 256,
-  });
-  map.addLayer({
-    id: rasterLayerId,
-    type: "raster",
-    source: sourceId,
-    paint: {
-      "raster-opacity": 0.9 * layerOpacity,
-    },
-  });
+  if (!map.getSource(sourceId)) {
+    map.addSource(sourceId, {
+      type: "raster",
+      tiles: [sourceUrl],
+      tileSize: 256,
+    });
+  }
+
+  if (!map.getLayer(rasterLayerId)) {
+    map.addLayer({
+      id: rasterLayerId,
+      type: "raster",
+      source: sourceId,
+      paint: {
+        "raster-opacity": 0.9 * layerOpacity,
+      },
+    });
+  } else {
+    map.setPaintProperty(rasterLayerId, "raster-opacity", 0.9 * layerOpacity);
+  }
+
   return true;
 };
 
-const rasterScript: MapLibreTilesetScript = (args) => addRasterSourceAndLayer(args);
-const wmsScript: MapLibreTilesetScript = (args) => addRasterSourceAndLayer(args);
-
 const MAPLIBRE_TILESET_SCRIPTS: Partial<Record<GeoPlusLayerType, MapLibreTilesetScript>> = {
-  "raster-tile": rasterScript,
-  wms: wmsScript,
+  "raster-tile": syncRasterSourceAndLayer,
+  wms: syncRasterSourceAndLayer,
 };
 
 export const syncMapLibreTilesetLayer = (args: SyncMapLibreTilesetLayerArgs) => {

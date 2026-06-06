@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import maplibregl from "maplibre-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
-// @ts-ignore
+// @ts-expect-error This draw mode package does not ship TypeScript declarations.
 import DrawRectangle from "mapbox-gl-draw-rectangle-mode";
-// @ts-ignore
+// @ts-expect-error This draw mode package does not ship TypeScript declarations.
 import { DragCircleMode, DirectMode, SimpleSelectMode } from "mapbox-gl-draw-circle";
 import { DragHexagonMode } from "@/lib/geoplus/draw-modes/drag-hexagon-mode";
 import * as turf from "@turf/turf";
@@ -21,6 +21,7 @@ import { humanizeColumnName } from "@/lib/geoplus/duckdb-spatial-analytics";
 import { registerCogProtocol, unregisterCogProtocol } from "@/lib/geoplus/tilesets/cog-maplibre";
 import { registerPmtilesProtocol, unregisterPmtilesProtocol } from "@/lib/geoplus/tilesets/pmtiles-maplibre";
 import { registerMbtilesProtocol } from "@/lib/geoplus/tilesets/mbtiles-maplibre";
+import { registerOpfsProtocol, unregisterOpfsProtocol } from "@/lib/geoplus/opfs-storage";
 
 const DEFAULT_FLAT_CENTER: [number, number] = [90.4125, 23.8103];
 const DEFAULT_FLAT_ZOOM = 4;
@@ -51,13 +52,13 @@ const HOVER_HIGHLIGHT_SOURCE_ID = "geoplus-hover-highlight-source";
 const HOVER_HIGHLIGHT_FILL_LAYER_ID = "geoplus-hover-highlight-fill";
 const HOVER_HIGHLIGHT_LINE_LAYER_ID = "geoplus-hover-highlight-line";
 const HOVER_HIGHLIGHT_POINT_LAYER_ID = "geoplus-hover-highlight-point";
-const DEFAULT_HOVER_HIGHLIGHT_COLOR = "#22d3ee";
+const DEFAULT_HOVER_HIGHLIGHT_COLOR = "#e8b13f";
 const EMPTY_HOVER_FEATURE_COLLECTION: GeoJSON.FeatureCollection = {
   type: "FeatureCollection",
   features: [],
 };
 const DEFAULT_HOVER_LINE_WIDTH = 3;
-const DEFAULT_HOVER_FILL_OPACITY = 0.22;
+const DEFAULT_HOVER_FILL_OPACITY = 0.8;
 const DEFAULT_HOVER_POINT_RADIUS = 8;
 
 type HoverHighlightStyle = {
@@ -107,13 +108,15 @@ const renderHtmlValue = (value: unknown, label: string) => {
   // Handle media array (unlocked schema)
   if (Array.isArray(value) && value.length > 0 && value[0] && typeof value[0] === "object" && "data" in value[0]) {
     return `<div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:2px;">
-      ${value.map((item: any) => {
-        const type = item.type?.startsWith("video/") ? "video" : "image";
+      ${value.map((item: { data?: unknown; name?: unknown; type?: unknown }) => {
+        const data = typeof item.data === "string" ? item.data : "";
+        const name = typeof item.name === "string" ? item.name : "Media";
+        const type = typeof item.type === "string" && item.type.startsWith("video/") ? "video" : "image";
         if (type === "image") {
-          return `<img src="${escapeHtml(item.data)}" alt="${escapeHtml(item.name)}" class="geoplus-popup-media" style="cursor:pointer; width:48px; height:48px; border-radius:4px; object-fit:cover; border:1px solid rgba(148,163,184,0.3);" data-media-type="image" data-media-title="${escapeHtml(item.name)}" />`;
+          return `<img src="${escapeHtml(data)}" alt="${escapeHtml(name)}" class="geoplus-popup-media" style="cursor:pointer; width:48px; height:48px; border-radius:4px; object-fit:cover; border:1px solid rgba(148,163,184,0.3);" data-media-type="image" data-media-title="${escapeHtml(name)}" />`;
         } else {
-          return `<div class="geoplus-popup-media" style="position:relative; cursor:pointer; width:48px; height:48px; border-radius:4px; overflow:hidden; border:1px solid rgba(148,163,184,0.3);" data-media-type="video" data-media-title="${escapeHtml(item.name)}" data-media-src="${escapeHtml(item.data)}">
-            <video src="${escapeHtml(item.data)}" style="width:100%; height:100%; object-fit:cover; pointer-events:none;"></video>
+          return `<div class="geoplus-popup-media" style="position:relative; cursor:pointer; width:48px; height:48px; border-radius:4px; overflow:hidden; border:1px solid rgba(148,163,184,0.3);" data-media-type="video" data-media-title="${escapeHtml(name)}" data-media-src="${escapeHtml(data)}">
+            <video src="${escapeHtml(data)}" style="width:100%; height:100%; object-fit:cover; pointer-events:none;"></video>
             <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.2);">
               <div style="width:16px; height:16px; border-radius:50%; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; color:white; font-size:8px; padding-left:1px;">▶</div>
             </div>
@@ -235,6 +238,138 @@ const buildPopupHtml = (layer: GeoPlusLayerItem | undefined, properties: Record<
 const isFeatureCollection = (value: unknown): value is GeoJSON.FeatureCollection =>
   Boolean(value) && typeof value === "object" && (value as { type?: string }).type === "FeatureCollection";
 
+const areStringArraysEqual = (left?: string[], right?: string[]) => {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right || left.length !== right.length) {
+    return false;
+  }
+  return left.every((value, index) => value === right[index]);
+};
+
+const areRecordStringValuesEqual = (left?: Record<string, string>, right?: Record<string, string>) => {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return !left && !right;
+  }
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  return leftKeys.every((key) => left[key] === right[key]);
+};
+
+const areStyleConfigsEqual = (left?: GeoPlusLayerItem["styleConfig"], right?: GeoPlusLayerItem["styleConfig"]) => {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return !left && !right;
+  }
+
+  return (
+    left.fillColor === right.fillColor &&
+    left.lineColor === right.lineColor &&
+    left.pointColor === right.pointColor &&
+    left.labelColor === right.labelColor &&
+    left.lineWidth === right.lineWidth &&
+    left.pointRadius === right.pointRadius &&
+    left.labelSize === right.labelSize &&
+    left.markerStyle === right.markerStyle &&
+    left.markerSymbol === right.markerSymbol &&
+    left.customMarkerDataUrl === right.customMarkerDataUrl &&
+    left.colorByField === right.colorByField &&
+    left.colorRamp === right.colorRamp &&
+    left.classificationMethod === right.classificationMethod &&
+    left.classificationClasses === right.classificationClasses &&
+    areStringArraysEqual(left.customColorRamp, right.customColorRamp)
+  );
+};
+
+const areInteractionConfigsEqual = (
+  left?: GeoPlusLayerItem["interactionConfig"],
+  right?: GeoPlusLayerItem["interactionConfig"],
+) => {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return !left && !right;
+  }
+
+  return (
+    left.tooltipEnabled === right.tooltipEnabled &&
+    left.popupEnabled === right.popupEnabled &&
+    left.hoverHighlightEnabled === right.hoverHighlightEnabled &&
+    left.hoverHighlightColor === right.hoverHighlightColor &&
+    left.hoverLineColor === right.hoverLineColor &&
+    left.hoverFillOpacity === right.hoverFillOpacity &&
+    left.hoverLineWidth === right.hoverLineWidth &&
+    left.hoverPointRadius === right.hoverPointRadius &&
+    areStringArraysEqual(left.tooltipFields, right.tooltipFields) &&
+    areStringArraysEqual(left.popupFields, right.popupFields) &&
+    areRecordStringValuesEqual(left.fieldDisplayNames, right.fieldDisplayNames)
+  );
+};
+
+const areLayersEquivalentForRender = (previousLayers: GeoPlusLayerItem[], nextLayers: GeoPlusLayerItem[]) => {
+  if (previousLayers.length !== nextLayers.length) {
+    return false;
+  }
+
+  return previousLayers.every((previousLayer, index) => {
+    const nextLayer = nextLayers[index];
+    if (!nextLayer || previousLayer.id !== nextLayer.id) {
+      return false;
+    }
+
+    return (
+      previousLayer.sourceMode === nextLayer.sourceMode &&
+      previousLayer.engine === nextLayer.engine &&
+      previousLayer.layerType === nextLayer.layerType &&
+      previousLayer.tilesetProfileId === nextLayer.tilesetProfileId &&
+      previousLayer.rendererPreference === nextLayer.rendererPreference &&
+      previousLayer.layerTypePreference === nextLayer.layerTypePreference &&
+      previousLayer.sourceUrl === nextLayer.sourceUrl &&
+      previousLayer.serviceType === nextLayer.serviceType &&
+      previousLayer.fileName === nextLayer.fileName &&
+      previousLayer.uploadFileSizeBytes === nextLayer.uploadFileSizeBytes &&
+      previousLayer.uploadFeatureCountEstimate === nextLayer.uploadFeatureCountEstimate &&
+      previousLayer.uploadScale === nextLayer.uploadScale &&
+      previousLayer.uploadStorageUrl === nextLayer.uploadStorageUrl &&
+      previousLayer.originalFile === nextLayer.originalFile &&
+      previousLayer.rawInlineData === nextLayer.rawInlineData &&
+      previousLayer.inlineData === nextLayer.inlineData &&
+      previousLayer.visible === nextLayer.visible &&
+      previousLayer.opacity === nextLayer.opacity &&
+      previousLayer.stylePreset === nextLayer.stylePreset &&
+      previousLayer.labelEnabled === nextLayer.labelEnabled &&
+      previousLayer.labelField === nextLayer.labelField &&
+      previousLayer.duckDbWhereClause === nextLayer.duckDbWhereClause &&
+      previousLayer.duckDbChartLabelColumn === nextLayer.duckDbChartLabelColumn &&
+      areStyleConfigsEqual(previousLayer.styleConfig, nextLayer.styleConfig) &&
+      areInteractionConfigsEqual(previousLayer.interactionConfig, nextLayer.interactionConfig)
+    );
+  });
+};
+
+const moveHoverHighlightLayersToTop = (map: maplibregl.Map) => {
+  for (const layerId of [HOVER_HIGHLIGHT_FILL_LAYER_ID, HOVER_HIGHLIGHT_LINE_LAYER_ID, HOVER_HIGHLIGHT_POINT_LAYER_ID]) {
+    if (!map.getLayer(layerId)) {
+      continue;
+    }
+    try {
+      map.moveLayer(layerId);
+    } catch {
+      // Style reloads can briefly make layer ordering unavailable; the next hover will retry.
+    }
+  }
+};
+
 const ensureHoverHighlightLayers = (map: maplibregl.Map) => {
   if (!map.getSource(HOVER_HIGHLIGHT_SOURCE_ID)) {
     map.addSource(HOVER_HIGHLIGHT_SOURCE_ID, {
@@ -283,6 +418,8 @@ const ensureHoverHighlightLayers = (map: maplibregl.Map) => {
       },
     });
   }
+
+  moveHoverHighlightLayersToTop(map);
 };
 
 const setHoverHighlightFeature = (map: maplibregl.Map, feature: GeoJSON.Feature, style: HoverHighlightStyle) => {
@@ -386,23 +523,6 @@ const toPrimitivePropertyRecord = (value: unknown): Record<string, string | numb
   return normalized;
 };
 
-const countGeometryVertices = (geometry: GeoJSON.Geometry): number => {
-  const walk = (coordinates: unknown): number => {
-    if (!Array.isArray(coordinates)) {
-      return 0;
-    }
-    if (coordinates.length >= 2 && typeof coordinates[0] === "number" && typeof coordinates[1] === "number") {
-      return 1;
-    }
-    return coordinates.reduce((total, child) => total + walk(child), 0);
-  };
-
-  if (geometry.type === "GeometryCollection") {
-    return geometry.geometries.reduce((total, child) => total + countGeometryVertices(child), 0);
-  }
-  return walk(geometry.coordinates);
-};
-
 const normalizeDrawFeatureCollectionForLayer = (source: GeoJSON.FeatureCollection): GeoJSON.FeatureCollection => {
   const normalizedFeatures: GeoJSON.Feature[] = [];
 
@@ -477,7 +597,7 @@ const buildHoverHighlightStyle = (layer: GeoPlusLayerItem | undefined, geometryT
   const isLineGeometry = geometryType === "LineString" || geometryType === "MultiLineString";
   const isPolygonGeometry = geometryType === "Polygon" || geometryType === "MultiPolygon";
 
-  const defaultFillOpacity = isPolygonGeometry ? 0.26 : 0;
+  const defaultFillOpacity = isPolygonGeometry ? DEFAULT_HOVER_FILL_OPACITY : 0;
   const defaultLineWidth = isPolygonGeometry ? 3.4 : isLineGeometry ? 4.2 : 2.4;
   const defaultPointRadius = isPointGeometry ? 9.2 : 0;
 
@@ -512,10 +632,12 @@ export function useGeoPlusMap(
   const searchAbortRef = useRef<AbortController | null>(null);
   const currentThemeRef = useRef<"dark" | "light" | null>(null);
   const deckHoverActiveRef = useRef(false);
+  const mapLibreHoverActiveRef = useRef(false);
   const selectedBasemapRef = useRef<GeoPlusBasemapId>(selectedBasemapId);
   const projectionModeRef = useRef<MapProjectionMode>(defaultProjectionMode);
   const userLayersRef = useRef<GeoPlusLayerItem[]>(userLayers);
 
+  const [isMapRendering, setIsMapRendering] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -533,6 +655,7 @@ export function useGeoPlusMap(
   const [drawMeasurements, setDrawMeasurements] = useState<DrawMeasurements>({});
   const [activeDrawTemplate, setActiveDrawTemplate] = useState<DrawTemplate | null>(null);
   const [mediaViewerData, setMediaViewerData] = useState<MediaViewerData | null>(null);
+  const previousUserLayersRef = useRef<GeoPlusLayerItem[]>(userLayers);
 
   // Global click listener for popup media elements
   useEffect(() => {
@@ -672,15 +795,11 @@ export function useGeoPlusMap(
     overlay.setProps({
       layers: userDeckLayers,
       onHover: (info: Record<string, unknown>) => {
-        if (settings?.showLayerTooltips === false) {
-          deckHoverActiveRef.current = false;
-          if (tooltipPopupRef.current) tooltipPopupRef.current.remove();
-          clearHoverHighlightFeature(map);
-          map.getCanvas().style.cursor = "";
-          return;
-        }
-        
         if (!info.object || !info.layer) {
+          if (mapLibreHoverActiveRef.current) {
+            deckHoverActiveRef.current = false;
+            return;
+          }
           deckHoverActiveRef.current = false;
           if (tooltipPopupRef.current) tooltipPopupRef.current.remove();
           clearHoverHighlightFeature(map);
@@ -695,12 +814,12 @@ export function useGeoPlusMap(
           return rawId === safeId || rawId.startsWith(`${safeId}-`);
         });
 
-        if (appLayer && supportsFeatureInteractions(appLayer) && appLayer.interactionConfig?.tooltipEnabled !== false) {
+        if (appLayer && supportsFeatureInteractions(appLayer)) {
+           mapLibreHoverActiveRef.current = false;
            deckHoverActiveRef.current = true;
            map.getCanvas().style.cursor = "pointer";
            const obj = info.object as Record<string, unknown>;
            const properties = (obj.properties as Record<string, unknown>) || obj;
-           const html = buildTooltipHtml(appLayer, properties);
            const hoverFeature = deckObjectToGeoJsonFeature(obj);
            if (appLayer.interactionConfig?.hoverHighlightEnabled !== false && hoverFeature) {
              const hoverStyle = buildHoverHighlightStyle(appLayer, hoverFeature.geometry.type);
@@ -710,11 +829,14 @@ export function useGeoPlusMap(
            }
 
            const coord = getDeckClickLngLat(map, info, obj);
-           if (html && coord) {
+           if (settings?.showLayerTooltips !== false && appLayer.interactionConfig?.tooltipEnabled !== false && coord) {
+             const html = buildTooltipHtml(appLayer, properties);
              if (!tooltipPopupRef.current) {
                 tooltipPopupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "geoplus-tooltip" });
              }
              tooltipPopupRef.current.setLngLat([coord[0], coord[1]]).setHTML(html).addTo(map);
+           } else if (tooltipPopupRef.current) {
+             tooltipPopupRef.current.remove();
            }
         } else {
            deckHoverActiveRef.current = false;
@@ -751,12 +873,16 @@ export function useGeoPlusMap(
 
 
   useEffect(() => {
+    // Register OPFS protocol first so subsequent protocols (e.g. cog://) can
+    // issue byte-range requests against opfs:// archive URLs.
+    registerOpfsProtocol();
     registerCogProtocol();
     registerPmtilesProtocol();
     registerMbtilesProtocol();
     return () => {
       unregisterCogProtocol();
       unregisterPmtilesProtocol();
+      unregisterOpfsProtocol();
     };
   }, []);
 
@@ -775,7 +901,7 @@ export function useGeoPlusMap(
       style: getBasemapStyle(selectedBasemapRef.current, isDark),
       center: initialCenter,
       zoom: initialZoom,
-      // @ts-ignore
+      // @ts-expect-error MapLibre globe projection is supported at runtime but missing from this type surface.
       projection: {
         type: defaultProjectionMode === "globe" ? "globe" : "mercator",
       },
@@ -1083,11 +1209,32 @@ export function useGeoPlusMap(
     userLayersRef.current = userLayers;
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) {
+      previousUserLayersRef.current = userLayers;
       return;
     }
 
+    if (areLayersEquivalentForRender(previousUserLayersRef.current, userLayers)) {
+      previousUserLayersRef.current = userLayers;
+      return;
+    }
+    previousUserLayersRef.current = userLayers;
+
+    // Show a rendering indicator if the map hasn't gone idle within 400 ms.
+    const showTimer = setTimeout(() => setIsMapRendering(true), 400);
+    const onIdle = () => {
+      clearTimeout(showTimer);
+      setIsMapRendering(false);
+    };
+    map.off("idle", onIdle);
+    map.once("idle", onIdle);
+
     syncMapLibreLayers(map, userLayers);
     void syncDeckLayers(map, userLayers);
+
+    return () => {
+      clearTimeout(showTimer);
+      map.off("idle", onIdle);
+    };
   }, [syncDeckLayers, syncMapLibreLayers, userLayers]);
 
   // Interaction handlers for MapLibre layers
@@ -1095,44 +1242,73 @@ export function useGeoPlusMap(
     const map = mapRef.current;
     if (!map) return;
 
+    const managedLayerSuffixes = ["-fill", "-line", "-point", "-marker", "-label", "-raster"] as const;
+    const toSafeMapLibreLayerId = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "-");
+    const getAppLayerIdFromMapLibreLayerId = (maplibreLayerId: string) => {
+      if (!maplibreLayerId.startsWith(MAPLIBRE_LAYER_PREFIX)) {
+        return null;
+      }
+
+      const rawId = maplibreLayerId.slice(MAPLIBRE_LAYER_PREFIX.length);
+      const layerId = rawId.startsWith("src-") ? rawId.slice("src-".length) : rawId;
+      const suffix = managedLayerSuffixes.find((candidate) => layerId.endsWith(candidate));
+      return suffix ? layerId.slice(0, -suffix.length) : layerId;
+    };
+
     const findAppLayer = (maplibreLayerId: string) => {
-      const layerId = maplibreLayerId.replace(new RegExp(`^${MAPLIBRE_LAYER_PREFIX}(src-)?(.*?)(-fill|-line|-point|-marker|-label|-raster)?$`), "$2");
-      return userLayersRef.current.find(l => l.id.replace(/[^a-zA-Z0-9_-]/g, "-") === layerId);
+      const layerId = getAppLayerIdFromMapLibreLayerId(maplibreLayerId);
+      if (!layerId) {
+        return undefined;
+      }
+      const exactLayer = userLayersRef.current.find((layer) => toSafeMapLibreLayerId(layer.id) === layerId);
+      if (exactLayer) {
+        return exactLayer;
+      }
+
+      return userLayersRef.current.find((layer) => {
+        const safeLayerId = toSafeMapLibreLayerId(layer.id);
+        return (
+          layerId.startsWith(`${safeLayerId}-`) ||
+          layerId.startsWith(`pmtiles-${safeLayerId}-`) ||
+          layerId.startsWith(`mbtiles-${safeLayerId}-`)
+        );
+      });
+    };
+
+    const getInteractiveFeature = (features: maplibregl.MapGeoJSONFeature[]) => {
+      for (const feature of features) {
+        const appLayer = findAppLayer(feature.layer.id);
+        if (appLayer && supportsFeatureInteractions(appLayer)) {
+          return { feature, appLayer };
+        }
+      }
+      return null;
     };
 
     const handleMouseMove = (e: maplibregl.MapMouseEvent) => {
-      if (settings?.showLayerTooltips === false) {
+      const features = map.queryRenderedFeatures(e.point).filter((feature) => feature.layer.id.startsWith(MAPLIBRE_LAYER_PREFIX));
+      const hit = getInteractiveFeature(features);
+
+      if (hit) {
+        mapLibreHoverActiveRef.current = true;
         deckHoverActiveRef.current = false;
-        if (tooltipPopupRef.current) tooltipPopupRef.current.remove();
-        clearHoverHighlightFeature(map);
-        map.getCanvas().style.cursor = "";
-        return;
-      }
-
-      if (deckHoverActiveRef.current) {
-        return;
-      }
-
-      const features = map.queryRenderedFeatures(e.point).filter(f => f.layer.id.startsWith(MAPLIBRE_LAYER_PREFIX));
-      
-      if (features.length > 0) {
         map.getCanvas().style.cursor = "pointer";
-        const feature = features[0];
-        const appLayer = findAppLayer(feature.layer.id);
-        
-        if (supportsFeatureInteractions(appLayer) && appLayer?.interactionConfig?.tooltipEnabled !== false) {
-          const html = buildTooltipHtml(appLayer, feature.properties);
-          if (appLayer?.interactionConfig?.hoverHighlightEnabled !== false) {
-            const hoverFeature = mapFeatureToGeoJsonFeature(feature);
-            if (hoverFeature) {
-              const hoverStyle = buildHoverHighlightStyle(appLayer, hoverFeature.geometry.type);
-              setHoverHighlightFeature(map, hoverFeature, hoverStyle);
-            } else {
-              clearHoverHighlightFeature(map);
-            }
+        const { feature, appLayer } = hit;
+
+        if (appLayer.interactionConfig?.hoverHighlightEnabled !== false) {
+          const hoverFeature = mapFeatureToGeoJsonFeature(feature);
+          if (hoverFeature) {
+            const hoverStyle = buildHoverHighlightStyle(appLayer, hoverFeature.geometry.type);
+            setHoverHighlightFeature(map, hoverFeature, hoverStyle);
           } else {
             clearHoverHighlightFeature(map);
           }
+        } else {
+          clearHoverHighlightFeature(map);
+        }
+
+        if (settings?.showLayerTooltips !== false && appLayer.interactionConfig?.tooltipEnabled !== false) {
+          const html = buildTooltipHtml(appLayer, feature.properties);
           if (html) {
             if (!tooltipPopupRef.current) {
               tooltipPopupRef.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "geoplus-tooltip" });
@@ -1140,8 +1316,15 @@ export function useGeoPlusMap(
             tooltipPopupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
             return;
           }
+        } else if (tooltipPopupRef.current) {
+          tooltipPopupRef.current.remove();
         }
+        return;
       } else {
+        mapLibreHoverActiveRef.current = false;
+        if (deckHoverActiveRef.current) {
+          return;
+        }
         map.getCanvas().style.cursor = "";
       }
       if (tooltipPopupRef.current) tooltipPopupRef.current.remove();
@@ -1151,13 +1334,13 @@ export function useGeoPlusMap(
     const handleClick = (e: maplibregl.MapMouseEvent) => {
       if (settings?.showLayerPopups === false) return;
 
-      const features = map.queryRenderedFeatures(e.point).filter(f => f.layer.id.startsWith(MAPLIBRE_LAYER_PREFIX));
-      
-      if (features.length > 0) {
-        const feature = features[0];
-        const appLayer = findAppLayer(feature.layer.id);
-        
-        if (supportsFeatureInteractions(appLayer) && appLayer?.interactionConfig?.popupEnabled !== false) {
+      const features = map.queryRenderedFeatures(e.point).filter((feature) => feature.layer.id.startsWith(MAPLIBRE_LAYER_PREFIX));
+      const hit = getInteractiveFeature(features);
+
+      if (hit) {
+        const { feature, appLayer } = hit;
+
+        if (appLayer.interactionConfig?.popupEnabled !== false) {
           const html = buildPopupHtml(appLayer, feature.properties);
           if (html) {
             popupRef.current?.remove();
@@ -1720,6 +1903,7 @@ export function useGeoPlusMap(
     mapRootRef,
     mapContainerRef,
     searchInputRef,
+    isMapRendering,
     isFullscreen,
     isLocating,
     searchQuery,

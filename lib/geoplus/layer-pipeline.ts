@@ -119,7 +119,7 @@ export const detectLayerPipeline = (args: {
     }
     if (["geojson", "json"].includes(urlExtension)) {
       return {
-        engine: "deck",
+        engine: "maplibre",
         layerType: "geojson",
         confidence: "high",
         reason: "GeoJSON endpoint detected.",
@@ -134,16 +134,16 @@ export const detectLayerPipeline = (args: {
       };
     }
     return {
-      engine: "deck",
+      engine: "maplibre",
       layerType: "geojson",
       confidence: "low",
-      reason: "Unknown URL format, using Deck vector fallback.",
+      reason: "Unknown URL format, using MapLibre GeoJSON fallback.",
     };
   }
 
   if (mode === "gis-paste") {
     return {
-      engine: "deck",
+      engine: "maplibre",
       layerType: "geojson",
       confidence: "high",
       reason: "Pasted feature data is best as GeoJSON.",
@@ -153,7 +153,7 @@ export const detectLayerPipeline = (args: {
   if (mode === "upload") {
     if (["geojson", "json"].includes(fileExtension)) {
       return {
-        engine: "deck",
+        engine: "maplibre",
         layerType: "geojson",
         confidence: "high",
         reason: "GeoJSON file detected.",
@@ -161,7 +161,7 @@ export const detectLayerPipeline = (args: {
     }
     if (["zip", "shp", "gpkg", "geopackage"].includes(fileExtension)) {
       return {
-        engine: "deck",
+        engine: "maplibre",
         layerType: "geojson",
         confidence: "medium",
         reason: "Vector feature file detected.",
@@ -177,18 +177,19 @@ export const detectLayerPipeline = (args: {
     }
     if (["csv", "tsv", "parquet"].includes(fileExtension)) {
       return {
-        engine: "deck",
+        engine: "maplibre",
         layerType: "scatterplot",
         confidence: "medium",
         reason: "Tabular file detected.",
       };
     }
-    if (["mvt", "pbf", "pmtiles", "mlt"].includes(fileExtension)) {
+    if (["mvt", "pbf", "pmtiles", "mlt", "mbtiles"].includes(fileExtension)) {
+      const isMapLibreArchive = fileExtension === "pmtiles" || fileExtension === "mbtiles";
       return {
-        engine: fileExtension === "pmtiles" ? "maplibre" : "deck",
+        engine: isMapLibreArchive ? "maplibre" : "deck",
         layerType: "mvt",
         confidence: "medium",
-        reason: fileExtension === "pmtiles" ? "PMTiles archive detected." : "Vector tile file detected.",
+        reason: isMapLibreArchive ? "Vector tile archive detected." : "Vector tile file detected.",
       };
     }
     if (["tif", "tiff", "cog"].includes(fileExtension)) {

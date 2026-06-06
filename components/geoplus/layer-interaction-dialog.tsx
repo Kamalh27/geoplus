@@ -69,9 +69,9 @@ const buildDraftFromLayer = (layer: GeoPlusLayerItem): LayerInteractionDraft => 
   popupFields: [...(layer.interactionConfig?.popupFields ?? [])],
   fieldDisplayNames: { ...(layer.interactionConfig?.fieldDisplayNames ?? {}) },
   hoverHighlightEnabled: layer.interactionConfig?.hoverHighlightEnabled !== false,
-  hoverHighlightColor: layer.interactionConfig?.hoverHighlightColor ?? "#22d3ee",
-  hoverLineColor: layer.interactionConfig?.hoverLineColor ?? layer.interactionConfig?.hoverHighlightColor ?? "#22d3ee",
-  hoverFillOpacity: layer.interactionConfig?.hoverFillOpacity ?? 0.26,
+  hoverHighlightColor: layer.interactionConfig?.hoverHighlightColor ?? "#e8b13f",
+  hoverLineColor: layer.interactionConfig?.hoverLineColor ?? layer.interactionConfig?.hoverHighlightColor ?? "#e8b13f",
+  hoverFillOpacity: layer.interactionConfig?.hoverFillOpacity ?? 0.8,
   hoverLineWidth: layer.interactionConfig?.hoverLineWidth ?? 3.4,
   hoverPointRadius: layer.interactionConfig?.hoverPointRadius ?? 9.2,
 });

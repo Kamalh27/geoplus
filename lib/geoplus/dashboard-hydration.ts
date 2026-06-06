@@ -1,13 +1,26 @@
 import JSZip from "jszip";
 import type { GeoPlusLayerItem } from "@/components/geoplus/types";
 import { getFileExtension, parseUploadedSpatialFile } from "@/lib/geoplus/upload-parsers";
+import { isOpfsUrl, resolveLayerFileUrl } from "@/lib/geoplus/opfs-storage";
+import {
+  buildDashboardAssetCacheKey,
+  readCachedDashboardAsset,
+  writeCachedDashboardAsset,
+} from "@/lib/geoplus/dashboard-cache-storage";
 import { CORE_BACKEND_URL } from "./dashboard-storage";
 
 export function requiresDashboardLayerHydration(layer: GeoPlusLayerItem): boolean {
   return Boolean(
-    layer.sourceUrl &&
-      (layer.layerType === "geojson" || layer.layerType === "scatterplot") &&
-      !layer.inlineData
+    (
+      layer.sourceUrl &&
+        (layer.layerType === "geojson" || layer.layerType === "scatterplot") &&
+        !layer.inlineData
+    ) ||
+      (layer.sourceMode === "upload" &&
+        (layer.layerType === "geojson" || layer.layerType === "scatterplot") &&
+        !layer.inlineData &&
+        !layer.originalFile &&
+        Boolean(layer.uploadStorageUrl))
   );
 }
 
@@ -79,7 +92,8 @@ async function restoreHydrationFile(blob: Blob, layer: GeoPlusLayerItem): Promis
  * an upload (now hosted as a URL), we fetch it and parse it back into memory.
  */
 export async function hydrateDashboardLayers(
-  layers: GeoPlusLayerItem[]
+  layers: GeoPlusLayerItem[],
+  options: { dashboardId?: string | null } = {},
 ): Promise<GeoPlusLayerItem[]> {
   return Promise.all(
     layers.map(async (layer) => {
@@ -87,36 +101,79 @@ export async function hydrateDashboardLayers(
       // (Deck.gl GeoJSON/Scatterplot layers require inlineData, and upload mode was mapped to 'url')
       if (requiresDashboardLayerHydration(layer)) {
         try {
+          if (
+            layer.sourceMode === "upload" &&
+            (layer.layerType === "geojson" || layer.layerType === "scatterplot") &&
+            !layer.inlineData &&
+            !layer.originalFile
+          ) {
+            const localUploadUrl =
+              layer.uploadStorageUrl ??
+              (layer.sourceUrl && isOpfsUrl(layer.sourceUrl) ? layer.sourceUrl : undefined);
+
+            if (localUploadUrl) {
+              const localFile = await resolveLayerFileUrl(localUploadUrl);
+              if (localFile) {
+                const parsed = await parseUploadedSpatialFile(localFile);
+                if (!parsed || parsed.length === 0) {
+                  throw new Error(`Failed to restore local upload for ${layer.name}`);
+                }
+
+                return {
+                  ...layer,
+                  inlineData: parsed[0].inlineData,
+                  rawInlineData: parsed[0].inlineData,
+                  originalFile: localFile,
+                };
+              }
+            }
+          }
+
           // 1. Fetch the remote zipped/raw dataset.
           // Prefer the current backend origin for GeoPlus static dashboard files, then fall back
           // to the original stored absolute URL if needed.
           const fetchUrls = buildDashboardLayerFetchUrls(layer.sourceUrl ?? "");
           let blob: Blob | null = null;
           let lastFetchError: Error | null = null;
+          const assetCacheKey = layer.sourceUrl
+            ? buildDashboardAssetCacheKey(layer.sourceUrl, layer.fileName || layer.id)
+            : null;
 
-          for (const fetchUrl of fetchUrls) {
-            try {
-              const response = await fetch(fetchUrl, {
-                cache: "no-store",
-                credentials: "include",
-              });
-              if (!response.ok) {
-                throw new Error(`Failed to fetch layer data: ${response.status} ${response.statusText}`);
+          if (options.dashboardId && assetCacheKey) {
+            const cachedFile = await readCachedDashboardAsset(options.dashboardId, assetCacheKey);
+            if (cachedFile) {
+              blob = cachedFile;
+            }
+          }
+
+          if (!blob) {
+            for (const fetchUrl of fetchUrls) {
+              try {
+                const response = await fetch(fetchUrl, {
+                  cache: "no-store",
+                  credentials: "include",
+                });
+                if (!response.ok) {
+                  throw new Error(`Failed to fetch layer data: ${response.status} ${response.statusText}`);
+                }
+
+                // Fast fail if we accidentally get an HTML error page back instead of our zip/binary.
+                const contentType = response.headers.get("content-type") || "";
+                if (contentType.includes("text/html")) {
+                  throw new Error(
+                    `Expected dataset but received HTML from server at ${fetchUrl}. This usually means a 404 or backend routing error.`,
+                  );
+                }
+
+                blob = await response.blob();
+                if (options.dashboardId && assetCacheKey) {
+                  void writeCachedDashboardAsset(options.dashboardId, assetCacheKey, blob);
+                }
+                break;
+              } catch (error) {
+                lastFetchError =
+                  error instanceof Error ? error : new Error("Unknown dashboard layer download failure.");
               }
-
-              // Fast fail if we accidentally get an HTML error page back instead of our zip/binary.
-              const contentType = response.headers.get("content-type") || "";
-              if (contentType.includes("text/html")) {
-                throw new Error(
-                  `Expected dataset but received HTML from server at ${fetchUrl}. This usually means a 404 or backend routing error.`,
-                );
-              }
-
-              blob = await response.blob();
-              break;
-            } catch (error) {
-              lastFetchError =
-                error instanceof Error ? error : new Error("Unknown dashboard layer download failure.");
             }
           }
 

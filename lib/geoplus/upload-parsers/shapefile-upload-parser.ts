@@ -1,6 +1,7 @@
 import shp from "shpjs";
 
 import type { UploadFileParser, ParsedUploadLayer } from "@/lib/geoplus/upload-parsers/types";
+import { persistUploadFile } from "@/lib/geoplus/opfs-storage";
 
 type FeatureCollection = GeoJSON.FeatureCollection;
 
@@ -30,6 +31,7 @@ const normalizeShapefileResult = (value: unknown): ParsedUploadLayer[] => {
         formatLabel: "Shapefile",
         layerType: inferLayerType(singleCollection),
         inlineData: singleCollection,
+        featureCountEstimate: singleCollection.features.length,
         readyMessage: "Shapefile parsed and ready to add.",
       }
     ];
@@ -63,6 +65,7 @@ const normalizeShapefileResult = (value: unknown): ParsedUploadLayer[] => {
       formatLabel: "Shapefile",
       layerType: inferLayerType(collection),
       inlineData: collection,
+      featureCountEstimate: collection.features.length,
       readyMessage: `Shapefile layer "${sourceLayerName}" parsed and ready to add.`,
     });
   }
@@ -79,6 +82,10 @@ export const parseShapefileUpload: UploadFileParser = async (file) => {
     throw new Error("A standalone .shp file is not sufficient. Please upload a .zip archive containing the .shp, .shx, .dbf, and .prj files.");
   }
 
+  const uploadStorageUrl = await persistUploadFile("shapefile", file);
   const parsed = await shp(await file.arrayBuffer());
-  return normalizeShapefileResult(parsed);
+  return normalizeShapefileResult(parsed).map((layer) => ({
+    ...layer,
+    uploadStorageUrl,
+  }));
 };

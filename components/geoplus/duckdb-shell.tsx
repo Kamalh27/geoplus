@@ -28,12 +28,14 @@ const INITIAL_HISTORY: HistoryEntry[] = [
   { id: "2", type: "info", content: "Note: The shell provides an isolated sandbox for exploratory queries. If you run a simple SELECT query with a WHERE clause against the active layer, it will also filter the visual map." },
 ];
 
+const SHELL_PREVIEW_ROW_LIMIT = 100;
+
 export function DuckDbShell({ 
   layer, 
   onApplyFilter 
 }: { 
   layer: GeoPlusLayerItem | null; 
-  onApplyFilter?: (layerId: string, whereClause: string) => void;
+  onApplyFilter?: (layerId: string, whereClause: string) => void | Promise<void>;
 }) {
   const [history, setHistory] = useState<HistoryEntry[]>(INITIAL_HISTORY);
 
@@ -49,6 +51,53 @@ export function DuckDbShell({
   const activeAlias = useMemo(() => {
     return layer?.name.toLowerCase().replace(/[^a-z0-9]/g, "_") || "features";
   }, [layer]);
+
+  const extractWhereClauseForActiveAlias = (sql: string, alias: string) => {
+    const normalizedSql = sql.trim().replace(/;+\s*$/g, "");
+    const escapedAlias = alias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const fromPattern = `(?:from)\\s+(?:\"${escapedAlias}\"|${escapedAlias})\\b(?:\\s+(?:as\\s+)?([a-z_][a-z0-9_]*))?`;
+    const whereMatch = normalizedSql.match(
+      new RegExp(`${fromPattern}[\\s\\S]*?\\bwhere\\b\\s+([\\s\\S]+)$`, "i"),
+    );
+
+    const tableAlias = whereMatch?.[1]?.trim();
+    const rawWhereClause = whereMatch?.[2];
+    if (!rawWhereClause) {
+      return null;
+    }
+
+    let whereClause = rawWhereClause
+      .replace(/\s+(order\s+by|limit|group\s+by|having|qualify)\b[\s\S]*$/i, "")
+      .trim()
+      .replace(/;+\s*$/g, "");
+
+    if (tableAlias) {
+      const escapedTableAlias = tableAlias.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      whereClause = whereClause
+        .replace(new RegExp(`\\b${escapedTableAlias}\\.`, "g"), "")
+        .replace(new RegExp(`"${escapedTableAlias}"\\.`, "g"), "");
+    }
+
+    return whereClause || null;
+  };
+
+  const buildSafePreviewQuery = (sql: string) => {
+    const trimmedSql = sql.trim().replace(/;+\s*$/g, "");
+    const isSelectQuery = /^select\b/i.test(trimmedSql);
+    const hasLimitClause = /\blimit\b/i.test(trimmedSql);
+
+    if (!isSelectQuery || hasLimitClause) {
+      return {
+        sql: trimmedSql,
+        previewLimited: false,
+      };
+    }
+
+    return {
+      sql: `SELECT * FROM (${trimmedSql}) AS geoplus_shell_preview LIMIT ${SHELL_PREVIEW_ROW_LIMIT + 1}`,
+      previewLimited: true,
+    };
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -172,27 +221,23 @@ export function DuckDbShell({
         await loadLayerIntoDb(layer);
       }
 
-      const result = await connectionRef.current.query(q);
+      const { sql: previewQuery, previewLimited } = buildSafePreviewQuery(q);
+      const result = await connectionRef.current.query(previewQuery);
       const rows = result.toArray().map((r) => r.toJSON());
+      const isPreviewTruncated = previewLimited && rows.length > SHELL_PREVIEW_ROW_LIMIT;
+      const previewRows = isPreviewTruncated ? rows.slice(0, SHELL_PREVIEW_ROW_LIMIT) : rows;
       
       let columns: string[] = [];
-      if (rows.length > 0) {
-        columns = Object.keys(rows[0]);
+      if (previewRows.length > 0) {
+        columns = Object.keys(previewRows[0]);
       }
 
       let syncMessage = "";
       if (layer && onApplyFilter) {
-        // Attempt to extract WHERE clause for simple SELECTs
-        // Regex looks for: SELECT ... FROM alias WHERE ... (ignoring case)
-        const selectRegex = new RegExp(`^select\\s+.*\\s+from\\s+(?:"${activeAlias}"|${activeAlias})\\s+where\\s+(.+)$`, "i");
-        const match = q.match(selectRegex);
-        if (match && match[1]) {
-          // Remove potential ORDER BY, LIMIT, GROUP BY from the extracted where clause
-          const whereClause = match[1].replace(/\s+(order by|limit|group by|having)\s+.*$/i, "").trim();
-          if (whereClause) {
-            onApplyFilter(layer.id, whereClause);
-            syncMessage = ` (Map filter updated: ${whereClause})`;
-          }
+        const whereClause = extractWhereClauseForActiveAlias(q, activeAlias);
+        if (whereClause) {
+          await onApplyFilter(layer.id, whereClause);
+          syncMessage = ` (Map filter updated: ${whereClause})`;
         }
       }
 
@@ -201,8 +246,8 @@ export function DuckDbShell({
         { 
           id: Date.now().toString(), 
           type: "success", 
-          content: `Query returned ${rows.length} rows.${syncMessage}`, 
-          data: rows.slice(0, 100), // Cap at 100 rows for shell preview
+          content: `Query returned ${previewRows.length}${isPreviewTruncated ? "+" : ""} rows.${syncMessage}`, 
+          data: previewRows,
           columns 
         },
       ]);

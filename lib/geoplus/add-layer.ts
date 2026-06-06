@@ -12,6 +12,7 @@ import type { LayerPipelineDetection, GeoPlusAddDataMode } from "./layer-pipelin
 import { toLayerSourceMode } from "./layer-pipeline.ts";
 import { buildTilesetDetectionSummary, resolveTilesetProfileId } from "./tilesets/profiles.ts";
 import type { ParsedUploadLayer } from "./upload-parsers/index.ts";
+import { classifyUploadScale, formatUploadScaleLabel } from "@/lib/geoplus/upload-routing";
 
 const stripExtension = (value: string) => value.replace(/\.[^./\\]+$/, "");
 
@@ -176,6 +177,23 @@ const deriveLayerName = (args: {
   return buildUniqueAutoName(selectedSampleLayerName ?? "Layer", existingLayers);
 };
 
+const shouldUseMapLibreForInlineVectorLayer = (layerType: GeoPlusLayerType) =>
+  layerType === "geojson" || layerType === "scatterplot";
+
+const inferUploadServiceType = (fileName: string): GeoPlusServiceType | undefined => {
+  const extension = fileName.split(".").pop()?.toLowerCase();
+  if (extension === "pmtiles") {
+    return "pmtiles";
+  }
+  if (extension === "mbtiles") {
+    return "mbtiles";
+  }
+  if (extension === "tif" || extension === "tiff" || extension === "cog") {
+    return "cog";
+  }
+  return undefined;
+};
+
 export const buildLayerFromAddDataInput = (args: {
   mode: GeoPlusAddDataMode;
   layerName: string;
@@ -184,6 +202,8 @@ export const buildLayerFromAddDataInput = (args: {
   serviceUrl: string;
   serviceType: GeoPlusServiceType;
   gisText: string;
+  fileSizeBytes?: number;
+  uploadStorageUrl?: string;
   selectedSampleLayerName?: string | null;
   existingLayers: Pick<GeoPlusLayerItem, "name">[];
   parsedUploadLayer: ParsedUploadLayer | null;
@@ -192,16 +212,19 @@ export const buildLayerFromAddDataInput = (args: {
   resolvedEngine: GeoPlusLayerEngine;
   rendererPreference: GeoPlusRendererPreference;
   layerTypePreference: GeoPlusLayerTypePreference;
+  visible?: boolean;
   now?: number;
   random?: number;
 }): GeoPlusLayerItem => {
   const {
     mode,
     fileName,
+    fileSizeBytes,
     externalUrl,
     serviceUrl,
     serviceType,
     gisText,
+    uploadStorageUrl,
     selectedSampleLayerName,
     existingLayers,
     parsedUploadLayer,
@@ -210,6 +233,7 @@ export const buildLayerFromAddDataInput = (args: {
     resolvedEngine,
     rendererPreference,
     layerTypePreference,
+    visible = true,
     now = Date.now(),
     random = Math.random(),
   } = args;
@@ -217,6 +241,10 @@ export const buildLayerFromAddDataInput = (args: {
   let inlineData: unknown = undefined;
   let uploadLayerType: GeoPlusLayerType | null = null;
   let uploadSourceUrl: string | undefined = undefined;
+  let uploadFeatureCountEstimate: number | undefined = undefined;
+  let uploadScale: ReturnType<typeof classifyUploadScale> | undefined = undefined;
+  let uploadCacheUrl: string | undefined = uploadStorageUrl;
+  let uploadServiceType: GeoPlusServiceType | undefined = undefined;
   if (mode === "upload") {
     if (!parsedUploadLayer) {
       throw new Error("Choose a valid supported file before adding the layer.");
@@ -224,12 +252,35 @@ export const buildLayerFromAddDataInput = (args: {
     inlineData = parsedUploadLayer.inlineData;
     uploadLayerType = parsedUploadLayer.layerType;
     uploadSourceUrl = parsedUploadLayer.sourceUrl;
+    uploadServiceType = inferUploadServiceType(fileName);
+    uploadFeatureCountEstimate = parsedUploadLayer.featureCountEstimate;
+    const legacyUploadCacheUrl =
+      parsedUploadLayer.inlineData &&
+      typeof parsedUploadLayer.inlineData === "object" &&
+      !Array.isArray(parsedUploadLayer.inlineData) &&
+      typeof (parsedUploadLayer.inlineData as Record<string, unknown>).opfsUrl === "string"
+        ? String((parsedUploadLayer.inlineData as Record<string, unknown>).opfsUrl)
+        : undefined;
+    uploadCacheUrl = uploadCacheUrl ?? parsedUploadLayer.uploadStorageUrl ?? legacyUploadCacheUrl;
+    uploadScale = classifyUploadScale({
+      fileSizeBytes,
+      featureCountEstimate: uploadFeatureCountEstimate,
+    });
   } else if (mode === "gis-paste") {
     inlineData = parseGisPasteInput(gisText);
   }
 
   const finalLayerType = uploadLayerType ?? resolvedLayerType;
-  const finalEngine = mode === "service" || mode === "url" ? resolvedEngine : "deck";
+  const finalEngine =
+    mode === "upload" && shouldUseMapLibreForInlineVectorLayer(finalLayerType)
+      ? "maplibre"
+      : mode === "upload"
+        ? resolvedEngine
+      : mode === "gis-paste"
+        ? "maplibre"
+        : mode === "service" || mode === "url"
+          ? resolvedEngine
+          : "deck";
   const sourceUrl =
     mode === "upload"
       ? uploadSourceUrl
@@ -240,7 +291,7 @@ export const buildLayerFromAddDataInput = (args: {
           : undefined;
   const sourceMode = toLayerSourceMode(mode);
   const tilesetProfileId = resolveTilesetProfileId({
-    serviceType: mode === "service" ? serviceType : undefined,
+    serviceType: mode === "service" ? serviceType : uploadServiceType,
     layerType: finalLayerType,
     sourceUrl,
   });
@@ -270,15 +321,19 @@ export const buildLayerFromAddDataInput = (args: {
     rendererPreference,
     layerTypePreference,
     sourceUrl,
-    serviceType: mode === "service" ? serviceType : undefined,
+    serviceType: mode === "service" ? serviceType : uploadServiceType,
     fileName: mode === "upload" ? fileName : undefined,
-    originalFile: mode === "upload" ? parsedUploadLayer?.originalFile : undefined,
+    uploadFileSizeBytes: mode === "upload" ? fileSizeBytes : undefined,
+    uploadFeatureCountEstimate: mode === "upload" ? uploadFeatureCountEstimate : undefined,
+    uploadScale: mode === "upload" ? uploadScale : undefined,
+    uploadStorageUrl: mode === "upload" ? uploadCacheUrl : undefined,
+    originalFile: undefined,
     inlineData,
     detectionSummary:
       mode === "upload" && parsedUploadLayer
-        ? `${detectionSummary} · parsed ${parsedUploadLayer.formatLabel}`
+        ? `${detectionSummary} · parsed ${parsedUploadLayer.formatLabel}${uploadScale ? ` · ${formatUploadScaleLabel(uploadScale)} upload` : ""}`
         : detectionSummary,
-    visible: true,
+    visible,
     opacity: 1,
     stylePreset: "emerald",
     styleConfig: undefined,

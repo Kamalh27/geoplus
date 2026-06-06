@@ -1,10 +1,6 @@
 import JSZip from "jszip";
 import type { GeoPlusLayerItem } from "@/components/geoplus/types";
-
-/**
- * Backend URL for core services.
- */
-const DEFAULT_CORE_BACKEND_URL = "http://localhost:8000";
+import { isOpfsUrl, resolveLayerFileUrl } from "@/lib/geoplus/opfs-storage";
 
 function normalizeAbsoluteUrl(value: string | undefined): string | null {
   if (!value) return null;
@@ -17,10 +13,15 @@ function normalizeAbsoluteUrl(value: string | undefined): string | null {
   }
 }
 
+const DEFAULT_CORE_BACKEND_URL_DEV = "http://localhost:8000";
+const DEFAULT_CORE_BACKEND_URL_PROD = "https://api.spadace.com";
+
 export const CORE_BACKEND_URL =
   normalizeAbsoluteUrl(process.env.NEXT_PUBLIC_CORE_BACKEND_URL) ??
   normalizeAbsoluteUrl(process.env.NEXT_PUBLIC_API_BASE_URL) ??
-  DEFAULT_CORE_BACKEND_URL;
+  (process.env.NODE_ENV === "production"
+    ? DEFAULT_CORE_BACKEND_URL_PROD
+    : DEFAULT_CORE_BACKEND_URL_DEV);
 
 /**
  * Compresses a File using JSZip. Skips compression if the file is already 
@@ -142,9 +143,29 @@ export async function prepareLayersForSave(
   dashboardId: string // Added dashboardId
 ): Promise<GeoPlusLayerItem[]> {
   return Promise.all(layers.map(async (layer) => {
-    if (layer.originalFile && layer.sourceMode === 'upload') {
+    if (
+      layer.sourceMode === "upload" &&
+      (layer.originalFile || layer.uploadStorageUrl || (layer.sourceUrl && isOpfsUrl(layer.sourceUrl)))
+    ) {
+      const uploadFile =
+        layer.originalFile ??
+        (layer.uploadStorageUrl ? await resolveLayerFileUrl(layer.uploadStorageUrl) : null);
+      const fallbackUploadFile =
+        uploadFile ?? (layer.sourceUrl && isOpfsUrl(layer.sourceUrl) ? await resolveLayerFileUrl(layer.sourceUrl) : null);
+      const fileToUpload = fallbackUploadFile ?? uploadFile;
+
+      if (!fileToUpload) {
+        return {
+          ...layer,
+          inlineData: undefined,
+          rawInlineData: undefined,
+          originalFile: undefined,
+          uploadStorageUrl: undefined,
+        };
+      }
+
       const uploadedUrl = await uploadDashboardLayerToCore(
-        layer.originalFile, 
+        fileToUpload,
         projectUid,
         layer.name,
         dashboardId
@@ -154,10 +175,11 @@ export async function prepareLayersForSave(
         ...layer,
         sourceMode: 'url',
         sourceUrl: uploadedUrl,
-        fileName: layer.fileName || layer.originalFile.name,
+        fileName: layer.fileName || fileToUpload.name,
         inlineData: undefined,
         rawInlineData: undefined,
         originalFile: undefined,
+        uploadStorageUrl: undefined,
       };
     }
     
@@ -240,6 +262,7 @@ export async function prepareLayersForSave(
          inlineData: undefined,
          rawInlineData: undefined,
          originalFile: undefined,
+         uploadStorageUrl: undefined,
        };
     }
     
@@ -248,6 +271,7 @@ export async function prepareLayersForSave(
        inlineData: undefined,
        rawInlineData: undefined,
        originalFile: undefined,
+       uploadStorageUrl: undefined,
     };
   }));
 }

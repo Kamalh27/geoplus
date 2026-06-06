@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { GeoPlusLayerItem, GeoPlusUser } from "@/components/geoplus/types";
 import { prepareLayersForSave, CORE_BACKEND_URL } from "@/lib/geoplus/dashboard-storage";
+import { writeCachedDashboard } from "@/lib/geoplus/dashboard-cache-storage";
 import type { AppSettings } from "@/components/geoplus/use-app-settings";
 
 type SaveDashboardDialogProps = {
@@ -219,6 +220,19 @@ export function SaveDashboardDialog({
 
       const data = await response.json();
       const savedDashboardId = data.dashboard_id || dashboardId;
+      void writeCachedDashboard(
+        savedDashboardId,
+        {
+          id: savedDashboardId,
+          name: dashboardName,
+          project_uid: resolvedProjectUid,
+          layers: persistableLayers,
+          settings,
+          layout_config: { template: "geoplus" },
+          updated_at: typeof data?.data?.updated_at === "string" ? data.data.updated_at : null,
+        },
+        { role: "editor" },
+      );
 
       setStatusMessage(`Dashboard saved! ID: ${savedDashboardId}`);
       

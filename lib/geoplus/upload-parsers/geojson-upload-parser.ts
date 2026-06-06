@@ -1,4 +1,5 @@
 import type { UploadFileParser } from "@/lib/geoplus/upload-parsers/types";
+import { persistUploadFile } from "@/lib/geoplus/opfs-storage";
 
 const isGeoJsonType = (value: unknown) =>
   typeof value === "string" &&
@@ -41,6 +42,7 @@ const detectTileJsonSource = (value: Record<string, unknown>) => {
 };
 
 export const parseGeoJsonUpload: UploadFileParser = async (file) => {
+  const uploadStorageUrl = await persistUploadFile("geojson", file);
   let parsed: unknown;
   try {
     parsed = JSON.parse(await file.text()) as unknown;
@@ -60,6 +62,7 @@ export const parseGeoJsonUpload: UploadFileParser = async (file) => {
         formatLabel: "TileJSON",
         layerType: tileJsonSource.layerType,
         sourceUrl: tileJsonSource.sourceUrl,
+        uploadStorageUrl,
         readyMessage: "TileJSON parsed and ready to add.",
       }
     ];
@@ -74,6 +77,11 @@ export const parseGeoJsonUpload: UploadFileParser = async (file) => {
       formatLabel: "GeoJSON",
       layerType: "geojson",
       inlineData: parsed,
+      uploadStorageUrl,
+      featureCountEstimate:
+        record.type === "FeatureCollection" && Array.isArray((parsed as { features?: unknown }).features)
+          ? (parsed as { features: unknown[] }).features.length
+          : 1,
       readyMessage: "GeoJSON parsed and ready to add.",
     }
   ];

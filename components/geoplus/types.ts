@@ -1,3 +1,5 @@
+import type { UploadScale } from "@/lib/geoplus/upload-routing";
+
 export type GeoPlusUser = {
   id: string;
   name: string;
@@ -33,7 +35,6 @@ export type GeoPlusLayerStyleConfig = {
   lineColor?: string;
   pointColor?: string;
   labelColor?: string;
-  fillOpacity?: number;
   lineWidth?: number;
   pointRadius?: number;
   labelSize?: number;
@@ -104,6 +105,10 @@ export type GeoPlusLayerItem = {
   sourceUrl?: string;
   serviceType?: GeoPlusServiceType;
   fileName?: string;
+  uploadFileSizeBytes?: number;
+  uploadFeatureCountEstimate?: number;
+  uploadScale?: UploadScale;
+  uploadStorageUrl?: string;
   originalFile?: File;
   rawInlineData?: unknown;
   inlineData?: unknown;

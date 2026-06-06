@@ -43,7 +43,7 @@ import { getLayerGeometryFamilies, getLayerLabelFieldOptions } from "@/lib/geopl
 
 type LayerPanelProps = {
   layers: GeoPlusLayerItem[];
-  onAddLayer: (layer: GeoPlusLayerItem) => void;
+  onAddLayer: (layer: GeoPlusLayerItem) => void | Promise<void>;
   onToggleLayerVisibility: (layerId: string) => void;
   onSetLayerOpacity: (layerId: string, opacity: number) => void;
   onSetLayerStylePreset: (layerId: string, preset: GeoPlusLayerStylePreset) => void;
@@ -92,15 +92,15 @@ const stylePresetLineClassName: Record<GeoPlusLayerStylePreset, string> = {
 };
 
 const getLayerLineClassName = (layer: GeoPlusLayerItem) => stylePresetLineClassName[layer.stylePreset] ?? "border-emerald-500";
-const stylePresetOptions: Array<{ id: GeoPlusLayerStylePreset; label: string; icon: LucideIcon }> = [
-  { id: "emerald", label: "Forest", icon: Leaf },
-  { id: "sky", label: "Ocean", icon: Waves },
-  { id: "amber", label: "Sunset", icon: SunMedium },
-  { id: "rose", label: "Ember", icon: Flame },
-  { id: "slate", label: "Graphite", icon: Focus },
-  { id: "violet", label: "Aurora", icon: Sparkles },
-  { id: "lime", label: "Citrus", icon: CircleDot },
-  { id: "teal", label: "Lagoon", icon: Circle },
+const stylePresetOptions: Array<{ id: GeoPlusLayerStylePreset; label: string; icon: LucideIcon; activeClass: string }> = [
+  { id: "emerald", label: "Forest",   icon: Leaf,       activeClass: "border-emerald-500 bg-emerald-500/15 text-emerald-400" },
+  { id: "sky",     label: "Ocean",    icon: Waves,      activeClass: "border-sky-500     bg-sky-500/15     text-sky-400"     },
+  { id: "amber",   label: "Sunset",   icon: SunMedium,  activeClass: "border-amber-500   bg-amber-500/15   text-amber-400"   },
+  { id: "rose",    label: "Ember",    icon: Flame,      activeClass: "border-rose-500    bg-rose-500/15    text-rose-400"    },
+  { id: "slate",   label: "Graphite", icon: Focus,      activeClass: "border-slate-500   bg-slate-500/15   text-slate-400"   },
+  { id: "violet",  label: "Aurora",   icon: Sparkles,   activeClass: "border-violet-500  bg-violet-500/15  text-violet-400"  },
+  { id: "lime",    label: "Citrus",   icon: CircleDot,  activeClass: "border-lime-500    bg-lime-500/15    text-lime-400"    },
+  { id: "teal",    label: "Lagoon",   icon: Circle,     activeClass: "border-teal-500    bg-teal-500/15    text-teal-400"    },
 ];
 
 const markerStyleOptions: Array<{ id: GeoPlusMarkerStyle; label: string; icon: LucideIcon }> = [
@@ -141,7 +141,6 @@ const colorRampOptions: Array<{ id: GeoPlusColorRamp; label: string }> = [
 ];
 
 const DEFAULT_STYLE_CONFIG = {
-  fillOpacity: 0.18,
   lineWidth: 2,
   pointRadius: 5,
   labelSize: 13,
@@ -150,7 +149,7 @@ const DEFAULT_STYLE_CONFIG = {
 const clampValue = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 const stylePresetHexColors: Record<GeoPlusLayerStylePreset, { fill: string; line: string; point: string; label: string }> = {
-  emerald: { fill: "#22c55e", line: "#14b8a6", point: "#06b6d4", label: "#0f766e" },
+  emerald: { fill: "#2e7d4e", line: "#0b4f36", point: "#34d399", label: "#083f2b" },
   sky: { fill: "#38bdf8", line: "#2563eb", point: "#0ea5e9", label: "#1e40af" },
   amber: { fill: "#fbbf24", line: "#d97706", point: "#f59e0b", label: "#92400e" },
   rose: { fill: "#fb7185", line: "#e11d48", point: "#f43f5e", label: "#9f1239" },
@@ -538,7 +537,7 @@ export function LayerPanel({
                     title={layer.visible ? "Hide layer" : "Show layer"}
                     aria-label={layer.visible ? "Hide layer" : "Show layer"}
                   >
-                    {layer.visible ? <Eye className="size-4 text-sky-400" /> : <EyeOff className="size-4 text-muted-foreground" />}
+                    {layer.visible ? <Eye className="size-4 text-accent" /> : <EyeOff className="size-4 text-muted-foreground" />}
                   </button>
 
                   {layerToolSettings.showZoom ? (

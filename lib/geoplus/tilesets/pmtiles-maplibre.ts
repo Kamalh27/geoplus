@@ -2,6 +2,7 @@ import maplibregl from "maplibre-gl";
 import { PMTiles, Protocol, TileType } from "pmtiles";
 
 import type { GeoPlusLayerItem } from "@/components/geoplus/types";
+import { isOpfsUrl, resolveLayerFileUrl } from "@/lib/geoplus/opfs-storage";
 
 type LayerStyleColors = {
   fill: [number, number, number];
@@ -36,6 +37,7 @@ const PMTILES_PROXY_PATH = "/api/geoplus/pmtiles";
 const OFFICIAL_SAMPLE_PMTILES_URL =
   "https://r2-public.protomaps.com/protomaps-sample-datasets/cb_2018_us_zcta510_500k.pmtiles";
 const RASTER_SAMPLE_PMTILES_URL = "https://pmtiles.io/stamen_toner(raster)CC-BY+ODbL_z3.pmtiles";
+const opfsBlobUrlCache = new Map<string, string>();
 
 const toSafeLayerId = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "-");
 
@@ -83,13 +85,27 @@ export const unregisterPmtilesProtocol = () => {
   }
 };
 
-const getPmtilesArchiveUrl = (sourceUrl: string) => {
+const getPmtilesArchiveUrl = async (sourceUrl: string) => {
   if (sourceUrl === OFFICIAL_SAMPLE_PMTILES_URL || sourceUrl === RASTER_SAMPLE_PMTILES_URL) {
     return sourceUrl;
   }
 
   if (sourceUrl.startsWith("blob:")) {
     return sourceUrl;
+  }
+
+  if (isOpfsUrl(sourceUrl)) {
+    const cachedUrl = opfsBlobUrlCache.get(sourceUrl);
+    if (cachedUrl) {
+      return cachedUrl;
+    }
+
+    const file = await resolveLayerFileUrl(sourceUrl);
+    if (file) {
+      const blobUrl = URL.createObjectURL(file);
+      opfsBlobUrlCache.set(sourceUrl, blobUrl);
+      return blobUrl;
+    }
   }
 
   if (!/^https?:\/\//i.test(sourceUrl)) {
@@ -155,6 +171,9 @@ const createRasterStyleLayers = (args: {
       source: args.sourceId,
       paint: {
         "raster-opacity": args.layerOpacity,
+        // Prevent tile-fade banding artifacts during zoom transitions.
+        "raster-fade-duration": 0,
+        "raster-resampling": "linear",
       },
     },
   ] satisfies maplibregl.AddLayerObject[];
@@ -249,8 +268,13 @@ const createPmtilesStyleLayers = (args: {
   return styleLayers;
 };
 
-export const isPmtilesMapLibreLayer = (layer: Pick<GeoPlusLayerItem, "engine" | "serviceType">) =>
-  layer.engine === "maplibre" && layer.serviceType === "pmtiles";
+export const isPmtilesMapLibreLayer = (
+  layer: Pick<GeoPlusLayerItem, "engine" | "serviceType" | "sourceUrl" | "tilesetProfileId">,
+) =>
+  layer.engine === "maplibre" &&
+  (layer.serviceType === "pmtiles" ||
+    layer.tilesetProfileId === "pmtiles-vector-tile" ||
+    layer.sourceUrl?.toLowerCase().includes(".pmtiles"));
 
 export const syncPmtilesMapLibreLayer = async (args: {
   map: maplibregl.Map;
@@ -264,7 +288,7 @@ export const syncPmtilesMapLibreLayer = async (args: {
     return;
   }
 
-  const archiveUrl = getPmtilesArchiveUrl(sourceUrl);
+  const archiveUrl = await getPmtilesArchiveUrl(sourceUrl);
   const protocolUrl = getPmtilesProtocolUrl(archiveUrl);
   const { sourceId, layerPrefix } = getPmtilesManagedIds(layer.id);
   const instance = getPmtilesInstance(archiveUrl);

@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { Loader2 } from "lucide-react";
 
 import { MapControls } from "@/components/geoplus/map-controls";
 import { MapAttributionControl } from "@/components/geoplus/map-attribution-control";
@@ -23,7 +23,7 @@ type GeoPlusMapProps = {
   onClearFilters?: () => void;
   onSaveDrawLayer?: (name: string, features: GeoJSON.FeatureCollection) => void;
   isLayerLoading?: boolean;
-  layerLoadingMessage?: string;
+  isExternalMapRendering?: boolean;
 };
 
 export function GeoPlusMap({
@@ -36,12 +36,13 @@ export function GeoPlusMap({
   onClearFilters,
   onSaveDrawLayer,
   isLayerLoading = false,
-  layerLoadingMessage = "Loading map layers...",
+  isExternalMapRendering = false,
 }: GeoPlusMapProps) {
   const {
     mapRootRef,
     mapContainerRef,
     searchInputRef,
+    isMapRendering,
     isFullscreen,
     isLocating,
     searchQuery,
@@ -85,19 +86,17 @@ export function GeoPlusMap({
     setMediaViewerData,
   } = useGeoPlusMap(selectedBasemapId, layers, zoomToLayerRequest, zoomToFeatureRequest, settings, onSaveDrawLayer);
 
+  const showRenderingOverlay = isExternalMapRendering || isMapRendering;
+
   return (
     <div ref={mapRootRef} className="geoplus-map-root relative h-full w-full min-h-[420px] overflow-hidden">
       <div ref={mapContainerRef} aria-label="GeoPlus map" className="h-full w-full min-h-[420px]" />
 
       <div className="pointer-events-none absolute inset-0 z-20">
-        {isLayerLoading ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/28 backdrop-blur-[2px]">
-            <div className="flex flex-col items-center gap-3 rounded-2xl border border-border/70 bg-card/92 px-5 py-4 text-center shadow-[0_16px_40px_rgba(15,23,42,0.22)] backdrop-blur-md dark:shadow-[0_14px_36px_rgba(0,0,0,0.36)]">
-              <div className="relative size-10">
-                <Image src="/loader-light.svg" alt="" aria-hidden="true" fill className="object-contain dark:hidden" />
-                <Image src="/loader-dark.svg" alt="" aria-hidden="true" fill className="hidden object-contain dark:block" />
-              </div>
-              <p className="text-sm font-medium text-foreground">{layerLoadingMessage}</p>
+        {isLayerLoading || showRenderingOverlay ? (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="p-4">
+              <Loader2 className="size-10 animate-spin text-accent" />
             </div>
           </div>
         ) : null}

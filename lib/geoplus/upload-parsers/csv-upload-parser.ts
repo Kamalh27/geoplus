@@ -2,6 +2,7 @@ import { csvParse, tsvParse } from "d3-dsv";
 import { convertWKTToGeometry } from "@loaders.gl/gis";
 
 import type { UploadFileParser } from "@/lib/geoplus/upload-parsers/types";
+import { persistUploadFile } from "@/lib/geoplus/opfs-storage";
 
 type CsvRecord = Record<string, string>;
 
@@ -38,6 +39,7 @@ const inferLayerType = (features: GeoJSON.Feature[]) => {
 };
 
 export const parseCsvUpload: UploadFileParser = async (file) => {
+  const uploadStorageUrl = await persistUploadFile("csv", file);
   const text = await file.text();
   const rows = parseRows(file.name, text);
 
@@ -104,6 +106,8 @@ export const parseCsvUpload: UploadFileParser = async (file) => {
       formatLabel,
       layerType,
       inlineData: toFeatureCollection(features),
+      uploadStorageUrl,
+      featureCountEstimate: features.length,
       readyMessage: `${formatLabel} parsed and ready to add.`,
     }
   ];

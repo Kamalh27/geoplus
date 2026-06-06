@@ -6,8 +6,10 @@ export type ParsedUploadLayer = {
   inlineData?: unknown;
   originalFile?: File;
   sourceUrl?: string;
+  uploadStorageUrl?: string;
   formatLabel: string;
   readyMessage: string;
+  featureCountEstimate?: number;
 };
 
 export type UploadFileParser = (file: File) => Promise<ParsedUploadLayer[]>;

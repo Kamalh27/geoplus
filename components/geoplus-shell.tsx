@@ -30,7 +30,10 @@ type GuideTopicId = "sidebar" | "header-actions" | "layers" | "tools" | "basemap
 import { BugFixDialog } from "@/components/geoplus/bug-fix-dialog";
 import { SaveDashboardDialog } from "@/components/geoplus/save-dashboard-dialog";
 import { hydrateDashboardLayers, requiresDashboardLayerHydration } from "@/lib/geoplus/dashboard-hydration";
+import { readCachedDashboard, writeCachedDashboard } from "@/lib/geoplus/dashboard-cache-storage";
+import { clearDashboardDraft, readDashboardDraft, writeDashboardDraft } from "@/lib/geoplus/dashboard-draft-storage";
 import { CORE_BACKEND_URL } from "@/lib/geoplus/dashboard-storage";
+import { shouldAutoAnalyzeUpload } from "@/lib/geoplus/upload-routing";
 
 const workspaceTabs: {
   id: WorkspaceTab;
@@ -272,7 +275,16 @@ const getLayerSourceFeatureCollection = (layer: GeoPlusLayerItem): GeoJSON.Featu
   return null;
 };
 
-const shouldUseDuckDbForLayer = (layer: GeoPlusLayerItem) => getLayerSourceFeatureCollection(layer) !== null;
+const shouldUseDuckDbForLayer = (layer: GeoPlusLayerItem) => {
+  if (layer.sourceMode === "upload") {
+    return shouldAutoAnalyzeUpload({
+      fileSizeBytes: layer.uploadFileSizeBytes,
+      featureCountEstimate: layer.uploadFeatureCountEstimate,
+    });
+  }
+
+  return getLayerSourceFeatureCollection(layer) !== null;
+};
 
 const inferDerivedLayerType = (featureCollection: GeoJSON.FeatureCollection) =>
   featureCollection.features.every((feature) => feature.geometry?.type === "Point") ? "scatterplot" : "geojson";
@@ -416,6 +428,7 @@ export function GeoPlusShell({
   const [user] = useState<GeoPlusUser | null>(initialUser);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isDashboardMetadataLoading, setIsDashboardMetadataLoading] = useState(false);
+  const [isWorkspaceDraftLoaded, setIsWorkspaceDraftLoaded] = useState(Boolean(initialDashboardId));
   const [isDashboardLayerHydrating, setIsDashboardLayerHydrating] = useState(
     () => initialLayers.some((layer) => requiresDashboardLayerHydration(layer)),
   );
@@ -475,6 +488,28 @@ export function GeoPlusShell({
   }, [initialLayers]);
 
   useEffect(() => {
+    if (initialDashboardId) {
+      setIsWorkspaceDraftLoaded(true);
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      const draftLayers = readDashboardDraft(window.localStorage);
+      if (draftLayers && draftLayers.length > 0) {
+        setDashboardBootstrapLayers(draftLayers);
+      }
+    } catch (error) {
+      console.error("Failed to restore local workspace draft:", error);
+    } finally {
+      setIsWorkspaceDraftLoaded(true);
+    }
+  }, [initialDashboardId]);
+
+  useEffect(() => {
     if (!initialDashboardId || initialLayers.length > 0) {
       return;
     }
@@ -485,6 +520,11 @@ export function GeoPlusShell({
       setIsDashboardMetadataLoading(true);
 
       try {
+        const cachedDashboard = await readCachedDashboard(initialDashboardId);
+        if (!isCancelled && cachedDashboard?.data.layers.length) {
+          setDashboardBootstrapLayers(cachedDashboard.data.layers);
+        }
+
         const response = await fetch(`${CORE_BACKEND_URL}/api/v1/geoplus/dashboards/${initialDashboardId}`, {
           cache: "no-store",
           credentials: "include",
@@ -494,12 +534,30 @@ export function GeoPlusShell({
           throw new Error(`Failed to load dashboard ${initialDashboardId}: ${response.status} ${response.statusText}`);
         }
 
-        const data = (await response.json()) as Partial<{ layers: GeoPlusLayerItem[] }>;
+        const data = (await response.json()) as Partial<{
+          id: string;
+          name: string | null;
+          project_uid: string | null;
+          layers: GeoPlusLayerItem[];
+          settings: unknown;
+          layout_config: unknown;
+          updated_at: string | null;
+        }>;
         if (isCancelled) {
           return;
         }
 
-        setDashboardBootstrapLayers(Array.isArray(data.layers) ? data.layers : []);
+        const nextLayers = Array.isArray(data.layers) ? data.layers : [];
+        setDashboardBootstrapLayers(nextLayers);
+        void writeCachedDashboard(
+          initialDashboardId,
+          {
+            ...data,
+            id: typeof data.id === "string" ? data.id : initialDashboardId,
+            layers: nextLayers,
+          },
+          { role: "viewer" },
+        );
       } catch (error) {
         if (!isCancelled) {
           console.error("Failed to reload dashboard metadata in GeoPlus:", error);
@@ -523,11 +581,27 @@ export function GeoPlusShell({
   }, [safeInitialLayers]);
 
   useEffect(() => {
+    if (initialDashboardId || !isWorkspaceDraftLoaded || typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      if (layers.length === 0) {
+        clearDashboardDraft(window.localStorage);
+      } else {
+        writeDashboardDraft(window.localStorage, layers);
+      }
+    } catch (error) {
+      console.error("Failed to persist local workspace draft:", error);
+    }
+  }, [initialDashboardId, isWorkspaceDraftLoaded, layers]);
+
+  useEffect(() => {
     if (dashboardBootstrapLayers.length > 0) {
       setIsDashboardLayerHydrating(
         dashboardBootstrapLayers.some((layer) => requiresDashboardLayerHydration(layer)),
       );
-      hydrateDashboardLayers(dashboardBootstrapLayers).then((hydrated) => {
+      hydrateDashboardLayers(dashboardBootstrapLayers, { dashboardId: initialDashboardId }).then((hydrated) => {
         setLayers(hydrated);
       }).catch(console.error).finally(() => {
         setIsDashboardLayerHydrating(false);
@@ -535,7 +609,7 @@ export function GeoPlusShell({
     } else {
       setIsDashboardLayerHydrating(false);
     }
-  }, [dashboardBootstrapLayers]);
+  }, [dashboardBootstrapLayers, initialDashboardId]);
 
   useEffect(() => {
     hasAutoZoomedDashboardRef.current = false;
@@ -700,7 +774,7 @@ export function GeoPlusShell({
   const onAddLayer = useCallback(
     (layer: GeoPlusLayerItem) => {
       const nextLayer: GeoPlusLayerItem =
-        shouldUseDuckDbForLayer(layer)
+        layer.visible && shouldUseDuckDbForLayer(layer)
           ? {
               ...layer,
               rawInlineData: layer.inlineData,
@@ -710,14 +784,14 @@ export function GeoPlusShell({
           : layer;
 
       setLayers((previousLayers) => [...previousLayers, nextLayer]);
-      if (settings.autoZoomToLayers) {
+      if (settings.autoZoomToLayers && nextLayer.visible) {
         setZoomToLayerRequest({
           layerId: nextLayer.id,
           nonce: Date.now(),
         });
       }
 
-      const sourceFeatureCollection = getLayerSourceFeatureCollection(nextLayer);
+      const sourceFeatureCollection = nextLayer.visible ? getLayerSourceFeatureCollection(nextLayer) : null;
       if (sourceFeatureCollection) {
         void applyDuckDbFilter(nextLayer.id, "", undefined, sourceFeatureCollection);
       }
@@ -920,7 +994,6 @@ export function GeoPlusShell({
           zoomToLayerRequest={zoomToLayerRequest}
           zoomToFeatureRequest={zoomToFeatureRequest}
           isLayerLoading={isDashboardMetadataLoading || isDashboardLayerHydrating}
-          layerLoadingMessage="Loading saved map layers..."
           onToggleLayerVisibility={(layerId) => {
             setLayers((previous) => previous.map((l) => (l.id === layerId ? { ...l, visible: !l.visible } : l)));
           }}
@@ -935,7 +1008,7 @@ export function GeoPlusShell({
         className={cn(
           "absolute z-30",
           isSidebarCollapsed
-            ? "left-2 top-2 sm:left-3 sm:top-3"
+            ? "left-14 top-2 sm:left-16 sm:top-3"
             : "bottom-2 left-2 top-2 w-[320px] max-w-[calc(100vw-1rem)] sm:bottom-3 sm:left-3 sm:top-3 sm:max-w-[calc(100vw-1.5rem)]",
         )}
       >

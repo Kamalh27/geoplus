@@ -3,6 +3,7 @@ import { convertWKBToGeometry, convertWKTToGeometry } from "@loaders.gl/gis";
 
 import { getLocalDuckDbBundles } from "@/lib/geoplus/duckdb-bundles";
 import type { UploadFileParser } from "@/lib/geoplus/upload-parsers/types";
+import { persistUploadFile } from "@/lib/geoplus/opfs-storage";
 
 type ColumnInfo = {
   name: string;
@@ -177,6 +178,7 @@ const validateParquetSignature = async (file: File) => {
 };
 
 export const parseGeoparquetUpload: UploadFileParser = async (file) => {
+  const uploadStorageUrl = await persistUploadFile("geoparquet", file);
   await validateParquetSignature(file);
 
   const duckdbRuntime = await import("@duckdb/duckdb-wasm");
@@ -269,10 +271,12 @@ export const parseGeoparquetUpload: UploadFileParser = async (file) => {
       {
         formatLabel: "GeoParquet",
         layerType: inferLayerType(features),
+        featureCountEstimate: features.length,
         inlineData: {
           type: "FeatureCollection",
           features,
         },
+        uploadStorageUrl,
         readyMessage: "GeoParquet parsed and ready to add.",
       }
     ];

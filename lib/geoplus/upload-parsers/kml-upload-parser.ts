@@ -2,11 +2,17 @@ import { kml } from "@tmcw/togeojson";
 import JSZip from "jszip";
 
 import type { UploadFileParser } from "@/lib/geoplus/upload-parsers/types";
+import { persistUploadFile } from "@/lib/geoplus/opfs-storage";
 
 type FeatureCollection = GeoJSON.FeatureCollection;
 
 const inferLayerType = (featureCollection: FeatureCollection) => {
-  const hasOnlyPoints = featureCollection.features.every((feature) => feature.geometry?.type === "Point");
+  // Use scatterplot only when ALL features are Point geometry. Any mix that
+  // includes LineStrings, Polygons, or MultiGeometry must use the full
+  // GeoJsonLayer so all geometry types are rendered correctly.
+  const hasOnlyPoints = featureCollection.features.every(
+    (feature) => feature.geometry?.type === "Point" || feature.geometry?.type === "MultiPoint",
+  );
   return hasOnlyPoints ? "scatterplot" : "geojson";
 };
 
@@ -30,8 +36,22 @@ const parseKmlString = (kmlString: string): FeatureCollection => {
       throw new Error("KML file did not contain a valid FeatureCollection.");
     }
 
-    const validFeatures = geojson.features.filter((f) => f && f.geometry !== null) as GeoJSON.Feature[];
-    
+    // Filter out features with null, undefined, or geometry-less entries.
+    // Also reject features whose geometry has no coordinates (empty arrays
+    // can crash deck.gl's triangulation and produce blank rendering).
+    const validFeatures = geojson.features.filter((f): f is GeoJSON.Feature => {
+      if (!f || f.geometry == null) return false;
+      const g = f.geometry as unknown as Record<string, unknown>;
+      if (typeof g.type !== "string") return false;
+      // GeometryCollection: require at least one sub-geometry
+      if (g.type === "GeometryCollection") {
+        return Array.isArray(g.geometries) && (g.geometries as unknown[]).length > 0;
+      }
+      // All other types: require a non-empty coordinates array
+      if (!Array.isArray(g.coordinates) || g.coordinates.length === 0) return false;
+      return true;
+    });
+
     return {
       type: "FeatureCollection",
       features: validFeatures,
@@ -44,6 +64,7 @@ const parseKmlString = (kmlString: string): FeatureCollection => {
 
 export const parseKmlUpload: UploadFileParser = async (file) => {
   const fileName = file.name.toLowerCase();
+  const uploadStorageUrl = await persistUploadFile("kml", file);
   let kmlContent: string;
 
   if (fileName.endsWith(".kmz")) {
@@ -70,6 +91,8 @@ export const parseKmlUpload: UploadFileParser = async (file) => {
       formatLabel,
       layerType: inferLayerType(featureCollection),
       inlineData: featureCollection,
+      uploadStorageUrl,
+      featureCountEstimate: featureCollection.features.length,
       readyMessage: `${formatLabel} parsed and ready to add.`,
     }
   ];

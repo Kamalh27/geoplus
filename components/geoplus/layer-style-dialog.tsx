@@ -22,6 +22,7 @@ type StylePresetOption = {
   id: GeoPlusLayerStylePreset;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  activeClass: string;
 };
 
 type MarkerStyleOption = {
@@ -51,7 +52,6 @@ type LayerStyleDialogProps = {
   colorRampOptions: ColorRampOption[];
   styleTargetDefaults: { fill: string; line: string; point: string; label: string };
   defaultStyleConfig: {
-    fillOpacity: number;
     lineWidth: number;
     pointRadius: number;
     labelSize: number;
@@ -250,7 +250,7 @@ export function LayerStyleDialog({
                       className={cn(
                         "inline-flex h-8 items-center justify-center gap-1 rounded-md border px-1.5 text-[0.62rem] font-semibold uppercase tracking-[0.08em] transition",
                         isActivePreset
-                          ? "border-accent bg-accent/15 text-accent"
+                          ? preset.activeClass
                           : "border-border/80 text-muted-foreground hover:border-accent/50 hover:text-foreground",
                       )}
                     >
@@ -590,7 +590,6 @@ export function LayerStyleDialog({
                   lineColor: styleTargetDefaults.line,
                   pointColor: styleTargetDefaults.point,
                   labelColor: styleTargetDefaults.label,
-                  fillOpacity: defaultStyleConfig.fillOpacity,
                   lineWidth: defaultStyleConfig.lineWidth,
                   pointRadius: defaultStyleConfig.pointRadius,
                   labelSize: defaultStyleConfig.labelSize,

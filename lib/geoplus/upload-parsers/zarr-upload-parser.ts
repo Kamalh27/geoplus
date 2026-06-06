@@ -1,9 +1,12 @@
 import type { UploadFileParser } from "@/lib/geoplus/upload-parsers/types";
 import ZipFileStore from "@zarrita/storage/zip";
+import { persistUploadFile, resolveLayerFileUrl } from "@/lib/geoplus/opfs-storage";
 
 export const parseZarrUpload: UploadFileParser = async (file) => {
   try {
-    const store = ZipFileStore.fromBlob(file);
+    const uploadStorageUrl = await persistUploadFile("zarr", file);
+    const storedFile = (await resolveLayerFileUrl(uploadStorageUrl)) ?? file;
+    const store = ZipFileStore.fromBlob(storedFile);
     
     // We access the internal info promise to quickly find arrays without needing consolidated metadata
     const info = await (store as unknown as { info: Promise<{ entries: Record<string, unknown> }> }).info;
@@ -26,10 +29,11 @@ export const parseZarrUpload: UploadFileParser = async (file) => {
         formatLabel: "Zarr",
         layerType: "raster-tile", // We'll treat Zarr as raster for now using carbonplan zarr-layer
         inlineData: {
-          file, // We store the File object so the renderer can create the JSZip store
+          file: storedFile, // Persisted OPFS file keeps the archive as the canonical source.
           variable: primaryVariable,
           variables: arrayPaths,
         },
+        uploadStorageUrl,
         readyMessage: `Zarr archive parsed. Found variables: ${arrayPaths.join(", ")}. Ready to add.`,
       }
     ];

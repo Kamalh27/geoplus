@@ -112,8 +112,11 @@ export const cleanupMbtilesDatabase = (blobUrl: string) => {
   }
 };
 
-export const isMbtilesMapLibreLayer = (layer: Pick<GeoPlusLayerItem, "engine" | "serviceType">) =>
-  layer.engine === "maplibre" && layer.serviceType === ("mbtiles" as unknown);
+export const isMbtilesMapLibreLayer = (
+  layer: Pick<GeoPlusLayerItem, "engine" | "serviceType" | "tilesetProfileId">,
+) =>
+  layer.engine === "maplibre" &&
+  (layer.serviceType === "mbtiles" || layer.tilesetProfileId === "mbtiles-vector-tile");
 
 export const syncMbtilesMapLibreLayer = async (args: {
   map: maplibregl.Map;
@@ -170,8 +173,13 @@ export const syncMbtilesMapLibreLayer = async (args: {
         source: sourceId,
         paint: {
           "raster-opacity": layerOpacity,
+          // Prevent tile-fade banding artifacts during zoom transitions.
+          "raster-fade-duration": 0,
+          "raster-resampling": "linear",
         },
       });
+    } else {
+      map.setPaintProperty(layerId, "raster-opacity", layerOpacity);
     }
     return;
   }

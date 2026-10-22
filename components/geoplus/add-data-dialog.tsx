@@ -1,7 +1,7 @@
 "use client";
 
 import { type ComponentType, type FormEvent, useMemo, useRef, useState } from "react";
-import { CircleHelp, Clipboard, Database, Download, FileText, Layers3, Link2, Loader2, Plus, Upload, X } from "lucide-react";
+import { CircleHelp, Clipboard, Database, Download, FileText, Layers3, Link2, Loader2, Plus, Upload, User, X } from "lucide-react";
 
 import type { GeoPlusLayerItem, GeoPlusLayerTypePreference, GeoPlusRendererPreference, GeoPlusServiceType } from "@/components/geoplus/types";
 import { Button } from "@/components/ui/button";
@@ -28,11 +28,16 @@ import {
   supportedUploadExtensions,
   type ParsedUploadLayer,
 } from "@/lib/geoplus/upload-parsers";
+import type { GeoPlusUser } from "@/components/geoplus/types";
+import { CORE_BACKEND_URL } from "@/lib/geoplus/dashboard-storage";
 import { cn } from "@/lib/utils";
 
 type AddDataDialogProps = {
   onAddLayer: (layer: GeoPlusLayerItem) => void | Promise<void>;
   existingLayers: GeoPlusLayerItem[];
+  user: GeoPlusUser | null;
+  isAuthLoading: boolean;
+  onLogin: () => void;
 };
 
 type SampleLayerOption = {
@@ -42,6 +47,14 @@ type SampleLayerOption = {
   description: string;
   sourceUrl: string;
   sourceHint?: string;
+};
+
+type HostedLayerOption = {
+  id: string;
+  name: string;
+  layerKind: string;
+  status: string;
+  updatedAt: string;
 };
 
 const modeOptions: {
@@ -166,7 +179,7 @@ const resolveProjectionChoice = (args: {
   return detectGeoJsonSourceProjection(parsedUploadLayer.inlineData) ?? "EPSG:4326";
 };
 
-export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps) {
+export function AddDataDialog({ onAddLayer, existingLayers, user, isAuthLoading, onLogin }: AddDataDialogProps) {
   const submitInFlightRef = useRef(false);
   const sampleLayersByServiceType = useMemo(() => {
     const grouped = Object.fromEntries(serviceOptions.map((type) => [type, [] as SampleLayerOption[]])) as Record<
@@ -195,6 +208,9 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
   const [hasFetchedUrl, setHasFetchedUrl] = useState(false);
   const [urlFetchError, setUrlFetchError] = useState("");
   const [layerConfigError, setLayerConfigError] = useState("");
+  const [hostedLayers, setHostedLayers] = useState<HostedLayerOption[]>([]);
+  const [isLoadingHostedLayers, setIsLoadingHostedLayers] = useState(false);
+  const [hostedLayersError, setHostedLayersError] = useState<string | null>(null);
   const [serviceUrl, setServiceUrl] = useState("");
   const [gisText, setGisText] = useState("");
   const [parsedUploadLayers, setParsedUploadLayers] = useState<ParsedUploadLayer[]>([]);
@@ -310,6 +326,117 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
     } catch {
       setHasFetchedUrl(false);
       setUrlFetchError("Enter a valid URL before fetching.");
+    }
+  };
+
+  const loadHostedLayers = async () => {
+    setIsLoadingHostedLayers(true);
+    setHostedLayersError(null);
+
+    try {
+      const response = await fetch(`${CORE_BACKEND_URL}/api/v1/layers?status=published&limit=200&offset=0`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      if (response.status === 401) {
+        throw new Error("Please sign in to view published layers.");
+      }
+      if (!response.ok) {
+        throw new Error(`Failed to load published layers (HTTP ${response.status}).`);
+      }
+
+      const payload = (await response.json()) as unknown;
+      const items = Array.isArray(payload) ? payload : [];
+      const nextHostedLayers = items
+        .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+        .map((item) => ({
+          id: String(item.uid ?? item.id ?? crypto.randomUUID()),
+          name: String(item.name ?? "Published layer"),
+          layerKind: String(item.layer_kind ?? "layer"),
+          status: String(item.status ?? "published"),
+          updatedAt: String(item.updated_at ?? ""),
+        }));
+
+      setHostedLayers(nextHostedLayers);
+      if (nextHostedLayers.length === 0) {
+        setHostedLayersError("No published layers were returned by the backend.");
+      }
+    } catch (error) {
+      setHostedLayers([]);
+      setHostedLayersError(error instanceof Error ? error.message : "Unable to load published layers.");
+    } finally {
+      setIsLoadingHostedLayers(false);
+    }
+  };
+
+  const addPublishedLayerToDashboard = async (layer: HostedLayerOption) => {
+    setLayerConfigError("");
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(
+        `${CORE_BACKEND_URL}/api/v1/tilesets/dynamic-url?layer_uid=${encodeURIComponent(layer.id)}`,
+        {
+          credentials: "include",
+          cache: "no-store",
+        },
+      );
+
+      if (response.status === 401) {
+        throw new Error("Please sign in to add published layers.");
+      }
+      if (!response.ok) {
+        throw new Error(`Failed to resolve the published layer URL (HTTP ${response.status}).`);
+      }
+
+      const payload = (await response.json()) as { tile_url?: unknown; bounds?: unknown };
+      const tileUrl = typeof payload.tile_url === "string" ? payload.tile_url : "";
+      if (!tileUrl) {
+        throw new Error("The backend did not return a usable tile URL for this layer.");
+      }
+
+      const serviceType: GeoPlusServiceType = layer.layerKind === "raster" ? "cog" : "mvt";
+      const { engine: submitEngine, layerType: submitLayerType } = resolvePipeline({
+        detected: detectLayerPipeline({
+          mode: "service",
+          fileName: "",
+          inputUrl: tileUrl,
+          serviceType,
+        }),
+        rendererPreference,
+        layerTypePreference,
+      });
+
+      const nextLayer = buildLayerFromAddDataInput({
+        mode: "service",
+        layerName: layer.name,
+        fileName: "",
+        externalUrl: tileUrl,
+        serviceUrl: tileUrl,
+        serviceType,
+        gisText: "",
+        existingLayers,
+        parsedUploadLayer: null,
+        detectedPipeline: detectLayerPipeline({
+          mode: "service",
+          fileName: "",
+          inputUrl: tileUrl,
+          serviceType,
+        }),
+        resolvedLayerType: submitLayerType,
+        resolvedEngine: submitEngine,
+        rendererPreference,
+        layerTypePreference,
+        visible: true,
+      });
+
+      await onAddLayer(nextLayer);
+      setLayerConfigError("");
+    } catch (error) {
+      setLayerConfigError(error instanceof Error ? error.message : "Unable to add published layer.");
+      throw error;
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -568,9 +695,63 @@ export function AddDataDialog({ onAddLayer, existingLayers }: AddDataDialogProps
               {mode === "existing-layers" ? (
                 <div className="space-y-4">
                   <div className="rounded-lg border border-dashed border-border/80 bg-muted/35 px-5 py-6 text-center">
-                    <p className="text-sm font-semibold text-foreground">No saved layers available</p>
-                    <p className="mt-1 text-sm text-muted-foreground">Sign in to view layers from your account.</p>
+                    <p className="text-sm font-semibold text-foreground">Hosted layers</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Browse published layers from the core platform.</p>
+                    {!user ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={isAuthLoading}
+                        onClick={onLogin}
+                        className="mt-4 h-9 rounded-md bg-accent px-4 text-[0.8rem] font-semibold text-accent-foreground hover:bg-accent/85"
+                      >
+                        {isAuthLoading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <User className="mr-2 size-4" />}
+                        {isAuthLoading ? "Signing in..." : "Sign In"}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={isLoadingHostedLayers}
+                        onClick={() => void loadHostedLayers()}
+                        className="mt-4 h-9 rounded-md bg-accent px-4 text-[0.8rem] font-semibold text-accent-foreground hover:bg-accent/85"
+                      >
+                        {isLoadingHostedLayers ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Database className="mr-2 size-4" />}
+                        {isLoadingHostedLayers ? "Loading..." : "Load Published Layers"}
+                      </Button>
+                    )}
                   </div>
+
+                  {hostedLayersError ? <p className="text-sm text-muted-foreground">{hostedLayersError}</p> : null}
+
+                  {hostedLayers.length > 0 ? (
+                    <div className="space-y-2">
+                      <h4 className="text-[0.72rem] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Published Layers</h4>
+                      {hostedLayers.map((layer) => (
+                        <button
+                          key={layer.id}
+                          type="button"
+                          onClick={() => {
+                            void addPublishedLayerToDashboard(layer);
+                          }}
+                          className="flex w-full items-start gap-2 rounded-md border border-border/80 bg-card/70 px-3 py-2.5 text-left text-sm text-foreground transition hover:border-accent/60 hover:bg-accent/10"
+                        >
+                          <Database className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{layer.name}</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {layer.layerKind} · {layer.status} · {layer.updatedAt || "unknown update"}
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : user && !isLoadingHostedLayers && !hostedLayersError ? (
+                    <div className="rounded-lg border border-dashed border-border/80 bg-muted/35 px-5 py-6 text-center">
+                      <p className="text-sm font-semibold text-foreground">No published layers loaded</p>
+                      <p className="mt-1 text-sm text-muted-foreground">Use the button above to fetch published layers from the backend.</p>
+                    </div>
+                  ) : null}
 
                   {existingLayers.length > 0 ? (
                     <div className="space-y-2">

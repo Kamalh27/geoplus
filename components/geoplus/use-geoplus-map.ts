@@ -12,7 +12,7 @@ import { DragHexagonMode } from "@/lib/geoplus/draw-modes/drag-hexagon-mode";
 import * as turf from "@turf/turf";
 
 import { searchNominatimLocations } from "@/components/geoplus/map-search-service";
-import { detectDarkMode, getBasemapStyle, type GeoPlusBasemapId } from "@/components/geoplus/map-style";
+import { detectDarkMode, getBasemapStyle, type GeoPlusBasemapId, type GeoPlusBasemapStyle } from "@/components/geoplus/map-style";
 import type { GeoPlusLayerItem, NominatimSearchResult } from "@/components/geoplus/types";
 import type { AppSettings } from "@/components/geoplus/use-app-settings";
 import type { MediaViewerData } from "./media-viewer-dialog";
@@ -766,7 +766,7 @@ export function useGeoPlusMap(
   }, []);
 
   const setStyleWithProjection = useCallback(
-    (map: maplibregl.Map, style: maplibregl.StyleSpecification) => {
+    (map: maplibregl.Map, style: GeoPlusBasemapStyle) => {
       map.setStyle(style);
       map.once("style.load", () => {
         applyProjectionMode(map, projectionModeRef.current);

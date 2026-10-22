@@ -77,6 +77,7 @@ async function getAuthenticatedUser(): Promise<GeoPlusUser | null> {
 export default async function GeoPlusPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const dashboardId = normalizeParam(sp.id);
+  const publicDashboard = normalizeParam(sp.public) === "1";
   const requestedProjectUid = normalizeParam(sp.project_uid);
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(AUTH_COOKIE_NAME)?.value;
@@ -85,12 +86,15 @@ export default async function GeoPlusPage({ searchParams }: PageProps) {
     getAuthenticatedUser(),
     (async () => {
       if (!dashboardId) return { layers: [] as GeoPlusLayerItem[], projectUid: null as string | null };
-      if (!sessionToken) return { layers: [] as GeoPlusLayerItem[], projectUid: null as string | null };
+      if (!sessionToken && !publicDashboard) return { layers: [] as GeoPlusLayerItem[], projectUid: null as string | null };
 
       try {
-        const response = await fetch(`${CORE_BACKEND_URL}/api/v1/geoplus/dashboards/${dashboardId}`, { 
+        const endpoint = publicDashboard
+          ? `${CORE_BACKEND_URL}/api/v1/geoplus/dashboards/${dashboardId}/public`
+          : `${CORE_BACKEND_URL}/api/v1/geoplus/dashboards/${dashboardId}`;
+        const response = await fetch(endpoint, { 
           cache: "no-store",
-          headers: { "Cookie": `${AUTH_COOKIE_NAME}=${sessionToken}` },
+          headers: sessionToken ? { "Cookie": `${AUTH_COOKIE_NAME}=${sessionToken}` } : undefined,
         });
         if (response.ok) {
           const data = await response.json() as Partial<{

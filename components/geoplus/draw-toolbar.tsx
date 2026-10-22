@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { MousePointer2, MapPin, PenTool, Hexagon, Square, Circle, Triangle, Ruler, Scaling, Trash2, Save, X, Wand2, Minimize as MinimizeIcon, ChevronRight, ChevronDown } from "lucide-react";
+import { MousePointer2, MapPin, PenTool, Hexagon, Square, Circle, Ruler, Scaling, Trash2, Save, X, Wand2, Minimize as MinimizeIcon, ChevronRight, ChevronDown } from "lucide-react";
 import type { DrawMode, DrawTemplate } from "./use-geoplus-map";
 import { CONTROL_BUTTON_CLASS, CONTROL_GROUP_BUTTON_CLASS, CONTROL_GROUP_CLASS } from "./control-button-styles";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -39,7 +38,6 @@ export function DrawToolbar({
   onSmoothSelectedDraw,
   setIsSaving,
 }: DrawToolbarProps) {
-  const [showMeasureMenu, setShowMeasureMenu] = useState(false);
   return (
     <div id="geoplus-draw-controls" className={`pointer-events-auto absolute z-30 flex gap-2 ${drawControlPos === 'top-left' ? 'left-3 top-3' : drawControlPos === 'top-right' ? 'right-3 top-3' : drawControlPos === 'bottom-left' ? 'left-3 bottom-8' : 'right-3 bottom-8'} ${drawControlOri === 'horizontal' ? 'flex-row' : 'flex-col'}`} style={isDrawLeft ? { marginLeft: "var(--geoplus-left-safe-area, 0)" } : undefined}>
       <div className={`${CONTROL_GROUP_CLASS} flex ${drawControlOri === 'horizontal' ? 'flex-row' : 'flex-col'}`} role="group" aria-label="Drawing tools">

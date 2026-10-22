@@ -32,6 +32,7 @@ import {
 import { LayerStyleDialog } from "@/components/geoplus/layer-style-dialog";
 import { LayerInteractionDialog } from "@/components/geoplus/layer-interaction-dialog";
 import { AddDataDialog } from "@/components/geoplus/add-data-dialog";
+import type { GeoPlusUser } from "@/components/geoplus/types";
 import type { GeoPlusColorRamp, GeoPlusLayerItem, GeoPlusLayerStylePreset, GeoPlusMarkerStyle, GeoPlusMarkerSymbol, GeoPlusLayerStyleConfig } from "@/components/geoplus/types";
 import { useAppSettings } from "@/components/geoplus/use-app-settings";
 import { Button } from "@/components/ui/button";
@@ -75,6 +76,9 @@ type LayerPanelProps = {
   onOpenLayerFilter: (layerId: string) => void;
   onOpenLayerTable: (layerId: string) => void;
   onOpenLayerChart: (layerId: string) => void;
+  user: GeoPlusUser | null;
+  isAuthLoading: boolean;
+  onLogin: () => void;
 };
 
 const toolbarButtonClassName =
@@ -285,6 +289,9 @@ export function LayerPanel({
   onOpenLayerFilter,
   onOpenLayerTable,
   onOpenLayerChart,
+  user,
+  isAuthLoading,
+  onLogin,
 }: LayerPanelProps) {
   const { settings } = useAppSettings();
   const [moreMenuLayerId, setMoreMenuLayerId] = useState<string | null>(null);
@@ -432,7 +439,7 @@ export function LayerPanel({
     <div className="space-y-4 py-4">
       <div className="flex items-center justify-between gap-4 px-4">
         <h2 className="text-[1.02rem] font-semibold uppercase tracking-[0.11em] text-foreground">Layers ({layers.length})</h2>
-        <AddDataDialog onAddLayer={onAddLayer} existingLayers={layers} />
+        <AddDataDialog onAddLayer={onAddLayer} existingLayers={layers} user={user} isAuthLoading={isAuthLoading} onLogin={onLogin} />
       </div>
 
       {layers.length === 0 ? (

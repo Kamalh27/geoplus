@@ -1225,6 +1225,9 @@ export function GeoPlusShell({
                   onOpenLayerFilter={openLayerFilterInToolsTab}
                   onOpenLayerTable={openLayerTableInToolsTab}
                   onOpenLayerChart={openLayerChartInToolsTab}
+                  user={user}
+                  isAuthLoading={isAuthLoading}
+                  onLogin={handleLogin}
                 />
               ) : activeTab === "tools" ? (
                 <SpatialToolsPanel

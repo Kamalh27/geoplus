@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { MeasurementPanel } from "./measurement-panel";
 import { DrawToolbar } from "./draw-toolbar";
+import type { MediaViewerData } from "./media-viewer-dialog";
 import { FeaturePropertiesPanel } from "./feature-properties-panel";
 import { CONTROL_BUTTON_CLASS, CONTROL_GROUP_BUTTON_CLASS, CONTROL_GROUP_CLASS } from "./control-button-styles";
 
@@ -56,7 +57,7 @@ type MapControlsProps = {
   drawMeasurements?: DrawMeasurements;
   activeDrawTemplate: DrawTemplate | null;
   setActiveDrawTemplate: (template: DrawTemplate | null) => void;
-  setMediaViewerData: (data: any) => void;
+  setMediaViewerData: (data: MediaViewerData | null) => void;
   onToggleSearchPanel?: () => void;
   onToggleLegendPanel: () => void;
   onSetMapMode: (mode: "2d" | "3d") => void;

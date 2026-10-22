@@ -61,6 +61,8 @@ export function SaveDashboardDialog({
   const [selectedProjectUid, setSelectedProjectUid] = useState("");
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [dashboardStatus, setDashboardStatus] = useState<"draft" | "published">("draft");
+  const [dashboardVisibility, setDashboardVisibility] = useState<"private" | "public">("private");
   const normalizedProjectUid = projectUid?.trim() ?? "";
   const normalizedProjectName = projectName?.trim() ?? "";
 
@@ -205,6 +207,8 @@ export function SaveDashboardDialog({
           id: dashboardId, // Include the ID
           name: dashboardName,
           project_uid: resolvedProjectUid,
+          status: dashboardStatus,
+          visibility: dashboardStatus === "published" ? dashboardVisibility : "private",
           layers: persistableLayers,
           settings: settings,
           layout_config: { template: "geoplus" },
@@ -226,6 +230,8 @@ export function SaveDashboardDialog({
           id: savedDashboardId,
           name: dashboardName,
           project_uid: resolvedProjectUid,
+          status: dashboardStatus,
+          visibility: dashboardStatus === "published" ? dashboardVisibility : "private",
           layers: persistableLayers,
           settings,
           layout_config: { template: "geoplus" },
@@ -250,6 +256,8 @@ export function SaveDashboardDialog({
         onOpenChange(false);
         setStatusMessage(null);
         setDashboardName("");
+        setDashboardStatus("draft");
+        setDashboardVisibility("private");
       }, 2000);
 
     } catch (error) {
@@ -311,6 +319,38 @@ export function SaveDashboardDialog({
                 This dashboard will be saved to the project already linked in the GeoPlus URL.
               </p>
             ) : null}
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label htmlFor="dashboard-status" className="text-sm font-medium">Status</label>
+              <Select
+                id="dashboard-status"
+                value={dashboardStatus}
+                onChange={(event) => {
+                  const nextStatus = event.target.value as "draft" | "published";
+                  setDashboardStatus(nextStatus);
+                  if (nextStatus === "draft") {
+                    setDashboardVisibility("private");
+                  }
+                }}
+              >
+                <option value="draft">Draft</option>
+                <option value="published">Published</option>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="dashboard-visibility" className="text-sm font-medium">Visibility</label>
+              <Select
+                id="dashboard-visibility"
+                value={dashboardVisibility}
+                onChange={(event) => setDashboardVisibility(event.target.value as "private" | "public")}
+                disabled={dashboardStatus !== "published"}
+              >
+                <option value="private">Private</option>
+                <option value="public">Public</option>
+              </Select>
+            </div>
           </div>
 
           {statusMessage && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent, useEffect } from "react";
+import { useState, type FormEvent } from "react";
 import Image from "next/image";
 import { Turnstile } from "@marsidev/react-turnstile";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -43,14 +43,20 @@ type BugFixDialogProps = {
 };
 
 export function BugFixDialog({ isOpen, onOpenChange, user }: BugFixDialogProps) {
-  const [bugFixDraft, setBugFixDraft] = useState<BugFixDraft>(defaultBugFixDraft);
+  const [bugFixDraft, setBugFixDraft] = useState<BugFixDraft>(() =>
+    user ? { ...defaultBugFixDraft, email: user.email } : defaultBugFixDraft,
+  );
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Prefill the signed-in user's email when the user or the anonymous toggle
+  // changes (adjusted during render instead of in an effect).
+  const [prevEmailSync, setPrevEmailSync] = useState({ user, isAnonymous: bugFixDraft.isAnonymous });
+  if (prevEmailSync.user !== user || prevEmailSync.isAnonymous !== bugFixDraft.isAnonymous) {
+    setPrevEmailSync({ user, isAnonymous: bugFixDraft.isAnonymous });
     if (user && !bugFixDraft.isAnonymous) {
       setBugFixDraft(prev => ({ ...prev, email: user.email }));
     }
-  }, [user, bugFixDraft.isAnonymous]);
+  }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

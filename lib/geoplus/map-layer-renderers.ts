@@ -21,6 +21,12 @@ import { syncMapLibreTilesetLayer } from "@/lib/geoplus/tilesets/maplibre-tile-l
 import { getLayerColorRampColors } from "@/lib/geoplus/layer-helpers";
 import { humanizeColumnName } from "@/lib/geoplus/duckdb-spatial-analytics";
 
+/**
+ * Font stack for user label layers. Must exist on the CARTO glyph server every GeoPlus basemap uses
+ * (`CARTO_GLYPHS_URL` in components/geoplus/map-style.ts): "Open Sans Semibold" 404s there.
+ */
+const GEOPLUS_LABEL_FONT = ["Open Sans Bold", "Arial Unicode MS Regular"];
+
 
 
 
@@ -1027,7 +1033,7 @@ export const syncMapLibreUserLayers = (map: maplibregl.Map, layers: GeoPlusLayer
             layout: {
               "text-field": ["to-string", ["coalesce", ["get", labelField], ""]] as unknown as string,
               "text-size": styleSpec.labelSize,
-              "text-font": ["Open Sans Semibold", "Arial Unicode MS Regular"],
+              "text-font": GEOPLUS_LABEL_FONT,
               "text-offset": [0, 1.08],
               "text-anchor": "top",
             },

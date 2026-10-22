@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Default URL: `http://localhost:3000`
+Default URL: `http://localhost:3001`
 
 ## Notes
 

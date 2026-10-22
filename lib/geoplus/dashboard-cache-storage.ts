@@ -9,6 +9,8 @@ export type CachedGeoPlusDashboard = {
   id: string;
   name?: string | null;
   project_uid?: string | null;
+  status?: "draft" | "published" | "archived";
+  visibility?: "private" | "public";
   layers: GeoPlusLayerItem[];
   settings?: unknown;
   layout_config?: unknown;

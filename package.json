@@ -9,8 +9,8 @@
     "start": "next start -p 3001",
     "lint": "eslint",
     "test:e2e": "playwright test",
-    "test:tilesets": "node --experimental-specifier-resolution=node --test --experimental-strip-types lib/geoplus/tilesets/*.test.ts",
-    "test:geoplus": "node --experimental-specifier-resolution=node --test --experimental-strip-types lib/geoplus/*.test.ts lib/geoplus/tilesets/*.test.ts"
+    "test:tilesets": "node --import ./tests/node/alias-hooks.mjs --test --experimental-strip-types lib/geoplus/tilesets/*.test.ts",
+    "test:geoplus": "node --import ./tests/node/alias-hooks.mjs --test --experimental-strip-types lib/geoplus/*.test.ts lib/geoplus/tilesets/*.test.ts"
   },
   "dependencies": {
     "@carbonplan/zarr-layer": "^0.5.0",

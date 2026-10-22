@@ -5,6 +5,15 @@ import { expect, test } from "@playwright/test";
 const zippedShapefileFixturePath = path.resolve(process.cwd(), "sample-data/test-points-shapefile.zip");
 const cogFixturePath = path.resolve(process.cwd(), "sample-data/test.tif");
 
+// Prevent the guided-tour from auto-launching on first visit.
+// Without this, the SVG overlay intercepts pointer events ~1500ms after
+// page load and blocks clicks on the "Add Layer" button.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("spadace_geoplus_tour_seen", "true");
+  });
+});
+
 
 
 
@@ -38,7 +47,7 @@ test("uploads a zipped shapefile and verifies the tools panel", async ({ page })
 
   await expect(page.getByText("Test points shapefile")).toBeVisible();
 
-  await page.getByLabel("Tools").click();
+  await page.locator("#geoplus-tab-tools").click();
 
   await expect(page.getByText("Select a tool to perform spatial operations")).toBeVisible();
   await page.getByRole("button", { name: "Filter Data Query and filter" }).click();

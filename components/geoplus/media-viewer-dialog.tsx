@@ -1,5 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import Image from "next/image";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Download, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 

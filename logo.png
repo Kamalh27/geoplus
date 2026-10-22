@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88 88" role="img" aria-label="SPADACE logo mark">
+  <defs>
+    <radialGradient id="bgCore" cx="50%" cy="42%" r="72%">
+      <stop offset="0%" stop-color="#0f4738" />
+      <stop offset="68%" stop-color="#072017" />
+      <stop offset="100%" stop-color="#03110d" />
+    </radialGradient>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="87" height="87" rx="22" fill="url(#bgCore)" stroke="#02100c" />
+  <rect x="11" y="11" width="66" height="66" rx="14" fill="none" stroke="#64f2c9" stroke-width="3.5" />
+  <circle cx="44" cy="44" r="9" fill="#64f2c9" />
+</svg>

@@ -21,20 +21,30 @@ export type GeoPlusAttributionLine = {
 
 export const DEFAULT_GLOBE_BASEMAP_ID: GeoPlusBasemapId = "satellite";
 
-const CARTO_ATTRIBUTION = "© OpenStreetMap contributors © CARTO";
 const ESRI_SATELLITE_ATTRIBUTION = "Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community";
 const OSM_ATTRIBUTION = "© OpenStreetMap contributors";
 const ESRI_TOPO_ATTRIBUTION = "Sources: Esri, USGS, NOAA";
 
-const CARTO_LIGHT_TILE_URL = "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png";
-const CARTO_DARK_TILE_URL = "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png";
+/**
+ * CARTO GL vector styles (Positron / Dark Matter). The CARTO raster tiles (`light_all` / `dark_all`)
+ * now draw an "API KEY REQUIRED" watermark; these styles and their vector tiles need no key
+ * (checked 2026-10-22). They carry their own OSM/CARTO attribution.
+ */
+export const CARTO_LIGHT_STYLE_URL = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+export const CARTO_DARK_STYLE_URL = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+/**
+ * Glyphs for the raster / empty basemaps so user label layers render on every basemap (the CARTO GL
+ * styles use the same server). Serves "Open Sans Regular|Bold" (see `GEOPLUS_LABEL_FONT` in
+ * `lib/geoplus/map-layer-renderers.ts`); "Open Sans Semibold" 404s (checked 2026-10-22).
+ */
+export const CARTO_GLYPHS_URL = "https://tiles.basemaps.cartocdn.com/fonts/{fontstack}/{range}.pbf";
 const ESRI_SATELLITE_TILE_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const ESRI_TOPO_TILE_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}";
 
 export const GEOPLUS_BASEMAP_OPTIONS: GeoPlusBasemapOption[] = [
-  { id: "dark", label: "Dark", previewImage: "https://a.basemaps.cartocdn.com/dark_all/4/8/5.png" },
-  { id: "light", label: "Light", previewImage: "https://a.basemaps.cartocdn.com/light_all/4/8/5.png" },
+  { id: "dark", label: "Dark", previewImage: "/basemaps/carto-dark-matter.png" },
+  { id: "light", label: "Light", previewImage: "/basemaps/carto-positron.png" },
   { id: "satellite", label: "Satellite", previewImage: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/4/5/8" },
   { id: "osm", label: "OSM", previewImage: "https://tile.openstreetmap.org/4/8/5.png" },
   { id: "terrain", label: "Terrain", previewImage: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/4/5/8" },
@@ -56,6 +66,7 @@ function createSingleRasterStyle(options: {
 }): maplibregl.StyleSpecification {
   return {
     version: 8,
+    glyphs: CARTO_GLYPHS_URL,
     sources: {
       [options.sourceId]: {
         type: "raster",
@@ -77,22 +88,15 @@ function createSingleRasterStyle(options: {
   };
 }
 
-export function getBasemapStyle(basemapId: GeoPlusBasemapId, isDarkTheme: boolean): maplibregl.StyleSpecification {
+/** A style object, or a style URL (the CARTO GL basemaps). */
+export type GeoPlusBasemapStyle = maplibregl.StyleSpecification | string;
+
+export function getBasemapStyle(basemapId: GeoPlusBasemapId, isDarkTheme: boolean): GeoPlusBasemapStyle {
   switch (basemapId) {
     case "dark":
-      return createSingleRasterStyle({
-        sourceId: "carto-dark",
-        layerId: "carto-dark-layer",
-        tiles: [CARTO_DARK_TILE_URL],
-        attribution: CARTO_ATTRIBUTION,
-      });
+      return CARTO_DARK_STYLE_URL;
     case "light":
-      return createSingleRasterStyle({
-        sourceId: "carto-light",
-        layerId: "carto-light-layer",
-        tiles: [CARTO_LIGHT_TILE_URL],
-        attribution: CARTO_ATTRIBUTION,
-      });
+      return CARTO_LIGHT_STYLE_URL;
     case "satellite":
       return createSingleRasterStyle({
         sourceId: "esri-satellite",
@@ -119,6 +123,7 @@ export function getBasemapStyle(basemapId: GeoPlusBasemapId, isDarkTheme: boolea
     case "none":
       return {
         version: 8,
+        glyphs: CARTO_GLYPHS_URL,
         sources: {},
         layers: [
           {

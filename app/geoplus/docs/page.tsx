@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 
 import { DRAFT_USER_MANUAL_MARKDOWN } from "@/lib/geoplus/docs";
 
@@ -16,7 +17,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default function GeoPlusDocsPage() {
+export default async function GeoPlusDocsPage() {
+  // Opt into dynamic rendering so the CSP nonce from proxy.ts can be applied.
+  await connection();
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-10 sm:px-6">
       <div className="rounded-2xl border border-border/70 bg-card/90 p-5 shadow-sm backdrop-blur-sm sm:p-7">

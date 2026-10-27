@@ -34,6 +34,14 @@ function normalizeParam(value: string | string[] | undefined): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+// Identifiers are interpolated into backend URL paths; only allow a conservative charset.
+const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+function normalizeIdentifierParam(value: string | string[] | undefined): string | null {
+  const normalized = normalizeParam(value);
+  return normalized && SAFE_IDENTIFIER_PATTERN.test(normalized) ? normalized : null;
+}
+
 async function getAuthenticatedUser(): Promise<GeoPlusUser | null> {
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(AUTH_COOKIE_NAME)?.value;
@@ -76,9 +84,9 @@ async function getAuthenticatedUser(): Promise<GeoPlusUser | null> {
 
 export default async function GeoPlusPage({ searchParams }: PageProps) {
   const sp = await searchParams;
-  const dashboardId = normalizeParam(sp.id);
+  const dashboardId = normalizeIdentifierParam(sp.id);
   const publicDashboard = normalizeParam(sp.public) === "1";
-  const requestedProjectUid = normalizeParam(sp.project_uid);
+  const requestedProjectUid = normalizeIdentifierParam(sp.project_uid);
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(AUTH_COOKIE_NAME)?.value;
 
@@ -90,8 +98,8 @@ export default async function GeoPlusPage({ searchParams }: PageProps) {
 
       try {
         const endpoint = publicDashboard
-          ? `${CORE_BACKEND_URL}/api/v1/geoplus/dashboards/${dashboardId}/public`
-          : `${CORE_BACKEND_URL}/api/v1/geoplus/dashboards/${dashboardId}`;
+          ? `${CORE_BACKEND_URL}/api/v1/geoplus/dashboards/${encodeURIComponent(dashboardId)}/public`
+          : `${CORE_BACKEND_URL}/api/v1/geoplus/dashboards/${encodeURIComponent(dashboardId)}`;
         const response = await fetch(endpoint, { 
           cache: "no-store",
           headers: sessionToken ? { "Cookie": `${AUTH_COOKIE_NAME}=${sessionToken}` } : undefined,
@@ -124,7 +132,7 @@ export default async function GeoPlusPage({ searchParams }: PageProps) {
     }
 
     try {
-      const response = await fetch(`${CORE_BACKEND_URL}/api/v1/projects/${resolvedProjectUid}`, {
+      const response = await fetch(`${CORE_BACKEND_URL}/api/v1/projects/${encodeURIComponent(resolvedProjectUid)}`, {
         cache: "no-store",
         headers: { "Cookie": `${AUTH_COOKIE_NAME}=${sessionToken}` },
       });

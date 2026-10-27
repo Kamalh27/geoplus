@@ -80,7 +80,21 @@ const escapeHtml = (value: unknown) =>
 const resolveFieldLabel = (layer: GeoPlusLayerItem | undefined, field: string) =>
   layer?.interactionConfig?.fieldDisplayNames?.[field]?.trim() || humanizeColumnName(field);
 
+// Only these URL schemes may be emitted as <img>/<video> sources in popup HTML. Anything else
+// (javascript:, http:, file:, arbitrary data: payloads, ...) is rendered as plain text.
+const isAllowedMediaUrl = (val: string) => {
+  if (val.startsWith("data:image/") || val.startsWith("data:video/") || val.startsWith("blob:")) {
+    return true;
+  }
+  try {
+    return new URL(val).protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 const isMediaString = (val: string): { isMedia: boolean; type: "image" | "video" } => {
+  if (!isAllowedMediaUrl(val)) return { isMedia: false, type: "image" };
   if (val.startsWith("data:image/")) return { isMedia: true, type: "image" };
   if (val.startsWith("data:video/")) return { isMedia: true, type: "video" };
   if (val.match(/\.(jpeg|jpg|gif|png|webp|svg)(\?.*)?$/i)) return { isMedia: true, type: "image" };

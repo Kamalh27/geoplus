@@ -22,10 +22,7 @@ export function UserManualDialog({ isOpen, onOpenChange, onOpenGuidedTour }: Use
         </DialogHeader>
 
         <div className="max-h-[60vh] overflow-y-auto rounded-md border border-border/70 bg-muted/20 px-4 py-3">
-          <article className="prose prose-sm dark:prose-invert prose-headings:font-semibold prose-a:text-accent hover:prose-a:text-accent/80 prose-code:rounded prose-code:bg-muted/50 prose-code:px-1 prose-code:py-0.5 prose-code:before:content-none prose-code:after:content-none max-w-none">
-            {/* Extremely simple Markdown renderer for the demo. In production, use a library like react-markdown. */}
-            <div dangerouslySetInnerHTML={{ __html: DRAFT_USER_MANUAL_MARKDOWN.replace(/\n/g, "<br />") }} />
-          </article>
+          <pre className="whitespace-pre-wrap text-sm leading-7 text-foreground">{DRAFT_USER_MANUAL_MARKDOWN}</pre>
         </div>
 
         <DialogFooter className="gap-2 sm:justify-between">

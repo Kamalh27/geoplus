@@ -73,7 +73,6 @@
     "typescript": "^6.0.2"
   },
   "overrides": {
-    "eslint-plugin-react-hooks": "7.0.1",
     "@loaders.gl/compression": {
       "fflate": "0.8.3"
     },

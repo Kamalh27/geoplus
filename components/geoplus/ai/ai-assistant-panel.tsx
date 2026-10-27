@@ -520,6 +520,10 @@ export function AiAssistantPanel({ layers = [] }: AiAssistantPanelProps) {
                 onChange={(e) => updateSettings({ apiKey: e.target.value })}
                 className="bg-background/50"
               />
+              <p className="text-[0.65rem] leading-snug text-muted-foreground">
+                Your key is kept in this browser tab&apos;s session storage only and is sent directly to the provider from
+                your browser. It is cleared when the tab closes and is never stored on SPADACE servers.
+              </p>
             </div>
 
             {settings.provider === "local" && (

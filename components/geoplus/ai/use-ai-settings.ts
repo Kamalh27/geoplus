@@ -5,6 +5,32 @@ import type { AiProvider, AiSettings } from "./types";
 
 const AI_SETTINGS_KEY = "geoplus-ai-settings";
 
+// API keys are kept in sessionStorage (per-tab, cleared on close) rather than localStorage so a
+// leaked key has a bounded lifetime. Legacy localStorage entries are migrated and removed.
+const readStoredSettings = (): string | null => {
+  try {
+    const fromSession = sessionStorage.getItem(AI_SETTINGS_KEY);
+    if (fromSession) {
+      return fromSession;
+    }
+    const legacy = localStorage.getItem(AI_SETTINGS_KEY);
+    if (legacy) {
+      localStorage.removeItem(AI_SETTINGS_KEY);
+    }
+    return legacy;
+  } catch {
+    return null;
+  }
+};
+
+const writeStoredSettings = (settings: AiSettings) => {
+  try {
+    sessionStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // Storage may be unavailable (private mode, quota); settings then live in memory only.
+  }
+};
+
 const defaultSettings: AiSettings = {
   provider: "openai",
   model: "gpt-4o-mini",
@@ -37,13 +63,13 @@ export function useAiSettings() {
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem(AI_SETTINGS_KEY);
+    const saved = readStoredSettings();
     if (saved) {
       try {
         const normalized = normalizeAiSettings(JSON.parse(saved));
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setSettings(normalized);
-        localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(normalized));
+        writeStoredSettings(normalized);
       } catch (e) {
         console.error("Failed to parse AI settings", e);
       }
@@ -54,7 +80,7 @@ export function useAiSettings() {
   const updateSettings = (newSettings: Partial<AiSettings>) => {
     setSettings((prev) => {
       const updated = { ...prev, ...newSettings };
-      localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(updated));
+      writeStoredSettings(updated);
       return updated;
     });
   };

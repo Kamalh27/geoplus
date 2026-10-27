@@ -1,23 +1,15 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { getLogoutCookieOptions, resolveSafeNextUrl } from "@/lib/geoplus/logout";
 
 export async function GET(request: NextRequest) {
-  // Extract the ?next parameter, defaulting to the homepage if not provided.
-  const searchParams = request.nextUrl.searchParams;
-  const nextUrl = searchParams.get("next") || "/";
+  // Only same-origin redirects are honoured; anything else falls back to "/".
+  const redirectUrl = resolveSafeNextUrl(request.nextUrl.searchParams.get("next"), request.nextUrl);
+  const response = NextResponse.redirect(redirectUrl);
 
-  // Create the redirect response
-  const response = NextResponse.redirect(new URL(nextUrl, request.url));
-
-  // Clear the Spadace authentication cookies. We set Max-Age to 0 to instruct the browser to delete them.
-  // We need to match the domain path configuration used by the backend.
-  const cookieOptions = {
-    path: "/",
-    domain: ".spadace.local", // Match the domain the backend sets
-    maxAge: 0,
-    httpOnly: true,
-    sameSite: "lax" as const,
-  };
+  // Clear the Spadace authentication cookies. Max-Age 0 instructs the browser to delete them.
+  // The domain must match what the core backend sets (AUTH_COOKIE_DOMAIN; host-only when unset).
+  const cookieOptions = getLogoutCookieOptions(process.env);
 
   response.cookies.set("access_token", "", cookieOptions);
   response.cookies.set("refresh_token", "", cookieOptions);

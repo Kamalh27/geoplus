@@ -142,10 +142,11 @@ async function chatGemini(apiKey: string, model: string, messages: { role: strin
     parts: [{ text: message.content }],
   }));
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "x-goog-api-key": apiKey,
     },
     body: JSON.stringify({
       contents,
@@ -344,10 +345,11 @@ async function callAnthropic(apiKey: string, model: string, prompt: string): Pro
 }
 
 async function callGemini(apiKey: string, model: string, prompt: string): Promise<AiAnalysisResponse> {
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "x-goog-api-key": apiKey,
     },
     body: JSON.stringify({
       contents: [{ parts: [{ text: `${prompt}\n\nIMPORTANT: Return ONLY the JSON object.` }] }],

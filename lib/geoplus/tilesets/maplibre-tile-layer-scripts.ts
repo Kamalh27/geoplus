@@ -1,4 +1,4 @@
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 
 import type { GeoPlusLayerItem, GeoPlusLayerType } from "@/components/geoplus/types";
 import { resolveTilesetSourceUrl } from "@/lib/geoplus/tilesets/source-url";

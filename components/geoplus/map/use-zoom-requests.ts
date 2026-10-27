@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import type { GeoPlusLayerItem } from "@/components/geoplus/types";
 import { getGeoJsonLngLatBounds, getLayerLngLatBounds } from "@/lib/geoplus/map-layer-renderers";
 

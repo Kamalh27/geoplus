@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { RefObject } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import { detectDarkMode, getBasemapStyle, type GeoPlusBasemapId, type GeoPlusBasemapStyle } from "@/components/geoplus/map-style";
 
 type UseBasemapSyncArgs = {

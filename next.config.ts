@@ -6,7 +6,9 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["geoplus.spadace.local"],
   turbopack: {
     resolveAlias: {
-      worker_threads: "./lib/empty.ts",
+      // Browser bundles only: maplibre-gl 6 uses the real worker_threads when its module is
+      // evaluated during SSR, and an empty stub there throws on import.
+      worker_threads: { browser: "./lib/empty.ts" },
       fs: "./lib/empty.ts",
       path: "./lib/empty.ts",
     },

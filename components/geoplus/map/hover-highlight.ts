@@ -1,4 +1,4 @@
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import type { GeoPlusLayerItem } from "@/components/geoplus/types";
 import type { HoverHighlightStyle } from "@/components/geoplus/map/types";
 

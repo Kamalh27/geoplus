@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { RefObject } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import type { GeoPlusBasemapStyle } from "@/components/geoplus/map-style";
 import { DEFAULT_GLOBE_CENTER, GLOBE_VIEW_BOUNDS } from "@/components/geoplus/map/constants";
 import type { MapProjectionMode } from "@/components/geoplus/map/types";

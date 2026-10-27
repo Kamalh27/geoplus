@@ -12,13 +12,11 @@
  * can request byte ranges directly from OPFS via standard HTTP Range semantics.
  */
 
-import maplibregl from "maplibre-gl";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const OPFS_PROTOCOL = "opfs";
+export const OPFS_PROTOCOL = "opfs";
 
-let protocolRegistered = false;
 
 // ─── Feature detection ───────────────────────────────────────────────────────
 
@@ -167,7 +165,7 @@ export const opfsUrlToKey = (url: string): string =>
  * requests so raster tile renderers (COG, PMTiles, MBTiles) can stream data
  * efficiently without loading the entire file into memory.
  */
-const opfsProtocolHandler = async (
+export const opfsProtocolHandler = async (
   params: { url: string; headers?: Record<string, string> },
   abortController: AbortController,
 ): Promise<{ data: ArrayBuffer }> => {
@@ -201,24 +199,6 @@ const opfsProtocolHandler = async (
 
   const data = await file.arrayBuffer();
   return { data };
-};
-
-/**
- * Register the opfs:// protocol with MapLibre GL.
- * Safe to call multiple times (idempotent).
- */
-export const registerOpfsProtocol = (): void => {
-  if (protocolRegistered || typeof window === "undefined") return;
-  if (!isOpfsAvailable()) return;
-
-  maplibregl.addProtocol(OPFS_PROTOCOL, opfsProtocolHandler as Parameters<typeof maplibregl.addProtocol>[1]);
-  protocolRegistered = true;
-};
-
-export const unregisterOpfsProtocol = (): void => {
-  if (!protocolRegistered) return;
-  maplibregl.removeProtocol(OPFS_PROTOCOL);
-  protocolRegistered = false;
 };
 
 // ─── Convenience: store + return opfs:// URL ─────────────────────────────────

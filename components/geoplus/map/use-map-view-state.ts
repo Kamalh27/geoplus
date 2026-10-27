@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { RefObject } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 
 export function useMapViewState(mapRef: RefObject<maplibregl.Map | null>) {
   const [mapBearing, setMapBearing] = useState(0);

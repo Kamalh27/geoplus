@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import type { RefObject } from "react";
-import maplibregl from "maplibre-gl";
-import { MapboxOverlay } from "@deck.gl/mapbox";
+import * as maplibregl from "maplibre-gl";
+import { MapLibreOverlay } from "@deck.gl/maplibre";
 import type { GeoPlusLayerItem } from "@/components/geoplus/types";
 import { buildDeckUserLayers, syncMapLibreUserLayers } from "@/lib/geoplus/map-layer-renderers";
 import { deckObjectToGeoJsonFeature, getDeckClickLngLat, supportsFeatureInteractions } from "@/components/geoplus/map/feature-utils";
@@ -9,7 +9,7 @@ import { buildHoverHighlightStyle, clearHoverHighlightFeature, setHoverHighlight
 import { buildPopupHtml, buildTooltipHtml } from "@/components/geoplus/map/popup-html";
 
 type UseLayerSyncCallbacksArgs = {
-  deckOverlayRef: RefObject<MapboxOverlay | null>;
+  deckOverlayRef: RefObject<MapLibreOverlay | null>;
   popupRef: RefObject<maplibregl.Popup | null>;
   tooltipPopupRef: RefObject<maplibregl.Popup | null>;
   deckHoverActiveRef: RefObject<boolean>;
@@ -34,11 +34,11 @@ export function useLayerSyncCallbacks({
   const syncDeckLayers = useCallback((map: maplibregl.Map, currentLayers: GeoPlusLayerItem[]) => {
     let overlay = deckOverlayRef.current;
     if (!overlay) {
-      overlay = new MapboxOverlay({
+      overlay = new MapLibreOverlay({
         interleaved: true,
         layers: [],
       });
-      map.addControl(overlay as unknown as maplibregl.IControl);
+      map.addControl(overlay);
       deckOverlayRef.current = overlay;
     }
 

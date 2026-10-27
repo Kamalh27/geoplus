@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "postinstall": "node scripts/copy-duckdb.mjs",
-    "predev": "node scripts/copy-duckdb.mjs",
-    "prebuild": "node scripts/copy-duckdb.mjs",
+    "sync:maplibre": "node scripts/sync-maplibre-worker.mjs",
+    "sync:assets": "node scripts/copy-duckdb.mjs && node scripts/sync-maplibre-worker.mjs",
+    "postinstall": "npm run sync:assets",
+    "predev": "npm run sync:assets",
+    "prebuild": "npm run sync:assets",
     "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start -p 3001",
@@ -16,32 +18,32 @@
     "test:geoplus": "node --import ./tests/node/alias-hooks.mjs --test --experimental-strip-types lib/geoplus/*.test.ts lib/geoplus/tilesets/*.test.ts"
   },
   "dependencies": {
-    "@carbonplan/zarr-layer": "^0.5.0",
-    "@deck.gl/core": "^9.3.1",
-    "@deck.gl/extensions": "^9.3.1",
-    "@deck.gl/geo-layers": "^9.3.1",
-    "@deck.gl/layers": "^9.3.1",
-    "@deck.gl/mapbox": "^9.3.1",
+    "@carbonplan/zarr-layer": "^0.5.2",
+    "@deck.gl/core": "^9.4.0",
+    "@deck.gl/extensions": "^9.4.0",
+    "@deck.gl/geo-layers": "^9.4.0",
+    "@deck.gl/layers": "^9.4.0",
+    "@deck.gl/maplibre": "^9.4.0",
     "@duckdb/duckdb-wasm": "^1.33.1-dev45.0",
-    "@geomatico/maplibre-cog-protocol": "^0.8.0",
-    "@loaders.gl/core": "^4.4.1",
-    "@loaders.gl/gis": "^4.4.1",
-    "@loaders.gl/mvt": "^4.4.1",
+    "@geomatico/maplibre-cog-protocol": "^0.10.0",
+    "@loaders.gl/core": "^4.5.4",
+    "@loaders.gl/gis": "^4.5.4",
+    "@loaders.gl/mvt": "^4.5.4",
     "@loaders.gl/zarr": "^4.3.4",
+    "@luma.gl/core": "~9.4.0",
+    "@luma.gl/engine": "~9.4.0",
     "@mapbox/mapbox-gl-draw": "^1.5.1",
     "@marsidev/react-turnstile": "^1.5.1",
     "@tmcw/togeojson": "^7.1.2",
     "@turf/turf": "^7.3.5",
-    "@types/mapbox__mapbox-gl-draw": "^1.4.9",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "d3-dsv": "^3.0.1",
     "echarts": "^6.0.0",
     "jszip": "^3.10.1",
     "lucide-react": "^1.8.0",
-    "mapbox-gl-draw-circle": "^1.1.2",
     "mapbox-gl-draw-rectangle-mode": "^1.0.4",
-    "maplibre-gl": "^5.24.0",
+    "maplibre-gl": "^6.16.0",
     "next": "^16.4.3",
     "pmtiles": "^4.4.1",
     "radix-ui": "^1.4.3",
@@ -59,6 +61,7 @@
     "@types/d3-dsv": "^3.0.7",
     "@types/geojson": "^7946.0.16",
     "@types/jszip": "^3.4.0",
+    "@types/mapbox__mapbox-gl-draw": "^1.4.9",
     "@types/node": "^25.6.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -70,6 +73,12 @@
     "typescript": "^6.0.2"
   },
   "overrides": {
-    "eslint-plugin-react-hooks": "7.0.1"
+    "eslint-plugin-react-hooks": "7.0.1",
+    "@loaders.gl/compression": {
+      "fflate": "0.8.3"
+    },
+    "texture-compressor": {
+      "image-size": "2.0.3"
+    }
   }
 }

@@ -45,3 +45,6 @@ next-env.d.ts
 
 # duckdb-wasm bundles are copied from node_modules by scripts/copy-duckdb.mjs
 /public/duckdb/
+
+# maplibre-gl worker is copied from node_modules by scripts/sync-maplibre-worker.mjs
+/public/vendor/maplibre/

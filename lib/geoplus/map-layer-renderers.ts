@@ -1,6 +1,6 @@
 import type { Layer as DeckLayer } from "@deck.gl/core";
 import { GeoJsonLayer, IconLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
-import type maplibregl from "maplibre-gl";
+import type * as maplibregl from "maplibre-gl";
 
 import type {
   GeoPlusColorRamp,

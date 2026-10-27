@@ -1,8 +1,10 @@
+// Side effect: points maplibre-gl at the same-origin worker. Must run before any Map is created.
+import "@/lib/maps/maplibreWorker";
 import { useEffect } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
-import { MapboxOverlay } from "@deck.gl/mapbox";
+import { MapLibreOverlay } from "@deck.gl/maplibre";
 import { detectDarkMode, getBasemapStyle, type GeoPlusBasemapId } from "@/components/geoplus/map-style";
 import type { GeoPlusLayerItem } from "@/components/geoplus/types";
 import { DEFAULT_FLAT_CENTER, DEFAULT_FLAT_ZOOM, DEFAULT_GLOBE_CENTER, DEFAULT_GLOBE_ZOOM } from "@/components/geoplus/map/constants";
@@ -14,7 +16,7 @@ type UseMapInitArgs = {
   mapContainerRef: RefObject<HTMLDivElement | null>;
   mapRef: RefObject<maplibregl.Map | null>;
   drawRef: RefObject<MapboxDraw | null>;
-  deckOverlayRef: RefObject<MapboxOverlay | null>;
+  deckOverlayRef: RefObject<MapLibreOverlay | null>;
   scaleControlRef: RefObject<maplibregl.ScaleControl | null>;
   markerRef: RefObject<maplibregl.Marker | null>;
   searchAbortRef: RefObject<AbortController | null>;
@@ -128,7 +130,7 @@ export function useMapInit({
       scaleControlRef.current = null;
       if (deckOverlayRef.current && mapRef.current) {
         try {
-          mapRef.current.removeControl(deckOverlayRef.current as unknown as maplibregl.IControl);
+          mapRef.current.removeControl(deckOverlayRef.current);
         } catch {
           // Ignore
         }

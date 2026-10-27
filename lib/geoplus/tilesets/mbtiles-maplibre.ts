@@ -1,4 +1,4 @@
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import initSqlJs, { type Database } from "sql.js";
 
 import type { GeoPlusLayerItem } from "@/components/geoplus/types";

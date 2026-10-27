@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { RefObject } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import type { GeoPlusLayerItem } from "@/components/geoplus/types";
 import { MAPLIBRE_LAYER_PREFIX } from "@/lib/geoplus/map-layer-renderers";
 import { mapFeatureToGeoJsonFeature, supportsFeatureInteractions } from "@/components/geoplus/map/feature-utils";

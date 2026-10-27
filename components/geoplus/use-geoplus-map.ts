@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { MapboxOverlay } from "@deck.gl/mapbox";
-import type maplibregl from "maplibre-gl";
+import type { MapLibreOverlay } from "@deck.gl/maplibre";
+import type * as maplibregl from "maplibre-gl";
 import type MapboxDraw from "@mapbox/mapbox-gl-draw";
 
 import type { GeoPlusBasemapId } from "@/components/geoplus/map-style";
@@ -48,7 +48,7 @@ export function useGeoPlusMap(
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
-  const deckOverlayRef = useRef<MapboxOverlay | null>(null);
+  const deckOverlayRef = useRef<MapLibreOverlay | null>(null);
   const scaleControlRef = useRef<maplibregl.ScaleControl | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);

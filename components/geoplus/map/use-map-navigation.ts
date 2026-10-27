@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import type { MapProjectionMode } from "@/components/geoplus/map/types";
 
 type UseMapNavigationArgs = {

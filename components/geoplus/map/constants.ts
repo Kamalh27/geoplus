@@ -1,4 +1,4 @@
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 
 export const DEFAULT_FLAT_CENTER: [number, number] = [90.4125, 23.8103];
 export const DEFAULT_FLAT_ZOOM = 4;

@@ -32,6 +32,8 @@ export function proxy(request: NextRequest) {
     "object-src 'none'",
     "form-action 'self'",
     `script-src ${scriptSrc.join(" ")}`,
+    // maplibre-gl 6 loads its worker same-origin (public/vendor/maplibre); blob: stays for loaders.gl
+    // workers (deck.gl MVT/zarr parsing), which wrap their CDN-hosted worker scripts in blob URLs.
     "worker-src 'self' blob:",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https:",

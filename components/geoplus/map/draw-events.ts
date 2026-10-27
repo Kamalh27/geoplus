@@ -1,5 +1,5 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import * as turf from "@turf/turf";
 import type { DrawMeasurements, DrawMode, DrawPurpose, DrawTemplate } from "@/components/geoplus/map/types";
@@ -13,6 +13,13 @@ type DrawEventContext = {
   setDrawMeasurements: Dispatch<SetStateAction<DrawMeasurements>>;
   setActiveDrawMode: Dispatch<SetStateAction<DrawMode>>;
 };
+
+// maplibre-gl 6 types `Map#on` against its own event map; mapbox-gl-draw fires its `draw.*`
+// events through `map.fire(type, data)` (still supported at runtime), so subscribe via a typed shim.
+type DrawEventMap = MapboxDraw.DrawEvents;
+function onDrawEvent<T extends keyof DrawEventMap>(map: maplibregl.Map, type: T, listener: (event: DrawEventMap[T]) => void) {
+  (map as unknown as { on(type: string, listener: (event: unknown) => void): void }).on(type, listener as (event: unknown) => void);
+}
 
 export function attachDrawEvents(map: maplibregl.Map, draw: MapboxDraw, ctx: DrawEventContext) {
   const {
@@ -62,9 +69,9 @@ export function attachDrawEvents(map: maplibregl.Map, draw: MapboxDraw, ctx: Dra
     }
   };
 
-  map.on("draw.create", (e) => {
+  onDrawEvent(map, "draw.create", (e) => {
     if (e.features.length > 0 && drawPurposeRef.current === "measure") {
-      draw.setFeatureProperty(e.features[0].id, "isMeasurement", true);
+      draw.setFeatureProperty(e.features[0].id as string, "isMeasurement", true);
       // Pre-update measurements before deselection so the final value is captured
       updateMeasurements();
       
@@ -79,7 +86,7 @@ export function attachDrawEvents(map: maplibregl.Map, draw: MapboxDraw, ctx: Dra
 
     // If a draw template is active and this is not a measurement, inject the template properties
     if (e.features.length > 0 && drawPurposeRef.current === "draw" && activeDrawTemplateRef.current) {
-      const featureId = e.features[0].id;
+      const featureId = e.features[0].id as string;
       const template = activeDrawTemplateRef.current;
       for (const [key, field] of Object.entries(template)) {
         let injectedValue: string | number | boolean | unknown[] = field.value;
@@ -110,10 +117,10 @@ export function attachDrawEvents(map: maplibregl.Map, draw: MapboxDraw, ctx: Dra
 
     updateMeasurements();
   });
-  map.on("draw.delete", updateMeasurements);
-  map.on("draw.update", updateMeasurements);
-  map.on("draw.selectionchange", updateMeasurements);
-  map.on("draw.modechange", (e) => {
+  onDrawEvent(map, "draw.delete", updateMeasurements);
+  onDrawEvent(map, "draw.update", updateMeasurements);
+  onDrawEvent(map, "draw.selectionchange", updateMeasurements);
+  onDrawEvent(map, "draw.modechange", (e) => {
     setActiveDrawMode(e.mode as DrawMode);
     if (e.mode === "draw_point" || e.mode === "draw_line_string" || e.mode === "draw_polygon") {
       // Mode changed externally without setDrawMode (e.g. via keyboard shortcut), assume draw by default if not set

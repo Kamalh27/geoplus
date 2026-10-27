@@ -14,6 +14,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "public/**/*.min.js",
     "public/duckdb/**",
+    "public/vendor/**",
     "public/sql-wasm.js",
   ]),
 ]);

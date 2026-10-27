@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import maplibregl from "maplibre-gl";
+import * as maplibregl from "maplibre-gl";
 import type { GeoPlusLayerItem } from "@/components/geoplus/types";
 import { areLayersEquivalentForRender } from "@/components/geoplus/map/layer-equality";
 

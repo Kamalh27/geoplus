@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import {
   CircleDot,
   Filter,
@@ -174,7 +174,9 @@ export function SpatialToolsPanel({
   const [filterField, setFilterField] = useState("");
   const [filterOperator, setFilterOperator] = useState("=");
   const [filterValue, setFilterValue] = useState("");
-  const [manualWhereClause, setManualWhereClause] = useState("");
+  const [manualWhereClause, setManualWhereClause] = useState(
+    () => layers.find((layer) => layer.id === selectedLayerId)?.duckDbWhereClause ?? "",
+  );
 
   const filteredTools = useMemo(() => {
     if (!searchQuery.trim()) return availableTools;
@@ -201,13 +203,13 @@ export function SpatialToolsPanel({
   const selectedLayer = layers.find((layer) => layer.id === selectedLayerId);
   const selectedLayerWhereClause = selectedLayer?.duckDbWhereClause ?? "";
 
-  useEffect(() => {
-    if (selectedLayerWhereClause !== manualWhereClause) {
-      setManualWhereClause(selectedLayerWhereClause);
-    }
-    // We only want to sync when the underlying layer data changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLayerWhereClause]);
+  // Re-seed the editable clause only when the layer's applied filter changes; edits made in
+  // between are the user's draft and are kept.
+  const [syncedWhereClause, setSyncedWhereClause] = useState(selectedLayerWhereClause);
+  if (syncedWhereClause !== selectedLayerWhereClause) {
+    setSyncedWhereClause(selectedLayerWhereClause);
+    setManualWhereClause(selectedLayerWhereClause);
+  }
 
   const handleAddToQuery = () => {
     if (!filterField) return;

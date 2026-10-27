@@ -57,43 +57,48 @@ export function SaveDashboardDialog({
   const [dashboardName, setDashboardName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [projects, setProjects] = useState<ProjectOption[]>([]);
-  const [selectedProjectUid, setSelectedProjectUid] = useState("");
-  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
-  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [projectChoice, setProjectChoice] = useState<string | null>(null);
+  const [projectsResult, setProjectsResult] = useState<{
+    user: GeoPlusUser;
+    items: ProjectOption[];
+    error: string | null;
+  } | null>(null);
   const [dashboardStatus, setDashboardStatus] = useState<"draft" | "published">("draft");
   const [dashboardVisibility, setDashboardVisibility] = useState<"private" | "public">("private");
   const normalizedProjectUid = projectUid?.trim() ?? "";
   const normalizedProjectName = projectName?.trim() ?? "";
 
+  // Everything below is derived from props plus the last fetch result, so nothing needs to be
+  // reset from an effect: a project in the URL/props wins, otherwise the user's projects are
+  // fetched on open.
+  const preferredProjectUid = isOpen ? getPreferredProjectUid(normalizedProjectUid) : "";
+  const needsProjectFetch = isOpen && user !== null && !preferredProjectUid;
+  const fetchedProjects = needsProjectFetch && projectsResult?.user === user ? projectsResult : null;
+  const isLoadingProjects = needsProjectFetch && fetchedProjects === null;
+  const projectsError = fetchedProjects?.error ?? null;
+  const projects: ProjectOption[] = !user
+    ? []
+    : preferredProjectUid
+      ? [buildCurrentProjectOption(preferredProjectUid, normalizedProjectName)]
+      : (fetchedProjects?.items ?? []);
+  const selectedProjectUid =
+    projectChoice ?? (preferredProjectUid || (fetchedProjects?.items.length === 1 ? fetchedProjects.items[0].uid : ""));
+  const setSelectedProjectUid = setProjectChoice;
+
+  // Reopening starts from a clean slate (fresh fetch, no remembered choice).
+  if (!isOpen && (projectChoice !== null || projectsResult !== null)) {
+    setProjectChoice(null);
+    setProjectsResult(null);
+  }
+
   useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    const preferredProjectUid = getPreferredProjectUid(normalizedProjectUid);
-    setSelectedProjectUid(preferredProjectUid);
-
-    if (!user) {
-      setProjects([]);
-      setProjectsError(null);
-      setIsLoadingProjects(false);
-      return;
-    }
-
-    if (preferredProjectUid) {
-      setProjects([buildCurrentProjectOption(preferredProjectUid, normalizedProjectName)]);
-      setProjectsError(null);
-      setIsLoadingProjects(false);
+    if (!needsProjectFetch || !user) {
       return;
     }
 
     let cancelled = false;
 
     const loadProjects = async () => {
-      setIsLoadingProjects(true);
-      setProjectsError(null);
-
       try {
         const response = await fetch(`${CORE_BACKEND_URL}/api/v1/projects?limit=200&offset=0`, {
           credentials: "include",
@@ -129,29 +134,21 @@ export function SaveDashboardDialog({
           return;
         }
 
-        setProjects(projectOptions);
-
-        const nextSelectedProjectUid = projectOptions.some((item) => item.uid === preferredProjectUid)
-          ? preferredProjectUid
-          : projectOptions.length === 1
-            ? projectOptions[0].uid
-            : "";
-        setSelectedProjectUid(nextSelectedProjectUid);
-
-        if (projectOptions.length === 0) {
-          setProjectsError("No projects are available for your account yet.");
-        }
+        setProjectsResult({
+          user,
+          items: projectOptions,
+          error: projectOptions.length === 0 ? "No projects are available for your account yet." : null,
+        });
       } catch (error) {
         if (cancelled) {
           return;
         }
 
-        setProjects([]);
-        setProjectsError(error instanceof Error ? error.message : "Unable to load your projects.");
-      } finally {
-        if (!cancelled) {
-          setIsLoadingProjects(false);
-        }
+        setProjectsResult({
+          user,
+          items: [],
+          error: error instanceof Error ? error.message : "Unable to load your projects.",
+        });
       }
     };
 
@@ -160,7 +157,7 @@ export function SaveDashboardDialog({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, user, normalizedProjectUid, normalizedProjectName]);
+  }, [needsProjectFetch, user]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -375,9 +375,12 @@ const buildDerivedAnalysisLayer = (args: {
 
 import { getLoginUrl, getLogoutUrl } from "@/lib/geoplus/auth";
 
+// Stable default so "no initial layers" is the same reference on every render.
+const NO_INITIAL_LAYERS: GeoPlusLayerItem[] = [];
+
 export function GeoPlusShell({ 
   initialDashboardId = null,
-  initialLayers = [], 
+  initialLayers = NO_INITIAL_LAYERS, 
   initialUser = null,
   initialProjectUid = null,
   initialProjectName = null,
@@ -411,7 +414,6 @@ export function GeoPlusShell({
   const themeModeRef = useRef<"dark" | "light" | null>(null);
   const layersRef = useRef<GeoPlusLayerItem[]>([]);
   const duckDbRunByLayerRef = useRef<Record<string, number>>({});
-  const hasAutoZoomedDashboardRef = useRef(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [leftSafeArea, setLeftSafeArea] = useState("0.75rem");
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("layers");
@@ -428,10 +430,31 @@ export function GeoPlusShell({
   const [user] = useState<GeoPlusUser | null>(initialUser);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isDashboardMetadataLoading, setIsDashboardMetadataLoading] = useState(false);
-  const [isWorkspaceDraftLoaded, setIsWorkspaceDraftLoaded] = useState(Boolean(initialDashboardId));
-  const [isDashboardLayerHydrating, setIsDashboardLayerHydrating] = useState(
-    () => initialLayers.some((layer) => requiresDashboardLayerHydration(layer)),
+  const [isLocalDraftChecked, setIsLocalDraftChecked] = useState(false);
+  // A saved dashboard never uses the local draft, so there is nothing to wait for.
+  const isWorkspaceDraftLoaded = Boolean(initialDashboardId) || isLocalDraftChecked;
+  // Bootstrap layers whose hydration has finished (or failed); hydrating = needs it and not settled yet.
+  const [settledBootstrapLayers, setSettledBootstrapLayers] = useState<GeoPlusLayerItem[] | null>(null);
+  const needsLayerHydration = useMemo(
+    () => dashboardBootstrapLayers.some((layer) => requiresDashboardLayerHydration(layer)),
+    [dashboardBootstrapLayers],
   );
+  const isDashboardLayerHydrating = needsLayerHydration && settledBootstrapLayers !== dashboardBootstrapLayers;
+  // Which layer set the dashboard auto-zoom has already fired for.
+  const [autoZoomedLayerKey, setAutoZoomedLayerKey] = useState<string | null>(null);
+
+  // Adopt new props/derived layers during render (instead of in effects) so the UI never shows
+  // a frame of stale state.
+  const [prevInitialLayers, setPrevInitialLayers] = useState(initialLayers);
+  if (prevInitialLayers !== initialLayers) {
+    setPrevInitialLayers(initialLayers);
+    setDashboardBootstrapLayers(initialLayers);
+  }
+  const [prevSafeInitialLayers, setPrevSafeInitialLayers] = useState(safeInitialLayers);
+  if (prevSafeInitialLayers !== safeInitialLayers) {
+    setPrevSafeInitialLayers(safeInitialLayers);
+    setLayers(safeInitialLayers);
+  }
 
   const handleLogin = useCallback(() => {
     setIsAuthLoading(true);
@@ -484,12 +507,7 @@ export function GeoPlusShell({
   }, [handleGuideStepChange, handleLogin, user]);
 
   useEffect(() => {
-    setDashboardBootstrapLayers(initialLayers);
-  }, [initialLayers]);
-
-  useEffect(() => {
     if (initialDashboardId) {
-      setIsWorkspaceDraftLoaded(true);
       return;
     }
 
@@ -500,12 +518,17 @@ export function GeoPlusShell({
     try {
       const draftLayers = readDashboardDraft(window.localStorage);
       if (draftLayers && draftLayers.length > 0) {
+        // One-time post-hydration read of an external system (localStorage). It cannot move into
+        // render or initial state: the server HTML has no draft, so reading it earlier would
+        // cause a hydration mismatch, and useSyncExternalStore would re-bootstrap on every
+        // autosave write of this same draft.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setDashboardBootstrapLayers(draftLayers);
       }
     } catch (error) {
       console.error("Failed to restore local workspace draft:", error);
     } finally {
-      setIsWorkspaceDraftLoaded(true);
+      setIsLocalDraftChecked(true);
     }
   }, [initialDashboardId]);
 
@@ -577,10 +600,6 @@ export function GeoPlusShell({
   }, [initialDashboardId, initialLayers]);
 
   useEffect(() => {
-    setLayers(safeInitialLayers);
-  }, [safeInitialLayers]);
-
-  useEffect(() => {
     if (initialDashboardId || !isWorkspaceDraftLoaded || typeof window === "undefined") {
       return;
     }
@@ -597,43 +616,46 @@ export function GeoPlusShell({
   }, [initialDashboardId, isWorkspaceDraftLoaded, layers]);
 
   useEffect(() => {
-    if (dashboardBootstrapLayers.length > 0) {
-      setIsDashboardLayerHydrating(
-        dashboardBootstrapLayers.some((layer) => requiresDashboardLayerHydration(layer)),
-      );
-      hydrateDashboardLayers(dashboardBootstrapLayers, { dashboardId: initialDashboardId }).then((hydrated) => {
-        setLayers(hydrated);
-      }).catch(console.error).finally(() => {
-        setIsDashboardLayerHydrating(false);
-      });
-    } else {
-      setIsDashboardLayerHydrating(false);
-    }
-  }, [dashboardBootstrapLayers, initialDashboardId]);
-
-  useEffect(() => {
-    hasAutoZoomedDashboardRef.current = false;
-  }, [initialDashboardLayerKey]);
-
-  useEffect(() => {
-    if (!initialDashboardLayerKey || hasAutoZoomedDashboardRef.current) {
+    if (dashboardBootstrapLayers.length === 0) {
       return;
     }
 
+    // Ignore the result if the bootstrap layers changed while hydrating; the newer run owns the state.
+    let isStale = false;
+    hydrateDashboardLayers(dashboardBootstrapLayers, { dashboardId: initialDashboardId })
+      .then((hydrated) => {
+        if (!isStale) {
+          setLayers(hydrated);
+        }
+      })
+      .catch(console.error)
+      .finally(() => {
+        if (!isStale) {
+          setSettledBootstrapLayers(dashboardBootstrapLayers);
+        }
+      });
+
+    return () => {
+      isStale = true;
+    };
+  }, [dashboardBootstrapLayers, initialDashboardId]);
+
+  // Auto-zoom once per set of dashboard layers, as soon as one of them has geometry to zoom to.
+  if (!initialDashboardLayerKey) {
+    if (autoZoomedLayerKey !== null) {
+      setAutoZoomedLayerKey(null);
+    }
+  } else if (autoZoomedLayerKey !== initialDashboardLayerKey && prevSafeInitialLayers === safeInitialLayers) {
+    // (The guard skips the pass in which `layers` is about to be replaced by the new bootstrap layers.)
     const targetLayer =
       layers.find((layer) => layer.visible && getLayerSourceFeatureCollection(layer) !== null) ??
       layers.find((layer) => getLayerSourceFeatureCollection(layer) !== null);
 
-    if (!targetLayer) {
-      return;
+    if (targetLayer) {
+      setAutoZoomedLayerKey(initialDashboardLayerKey);
+      setZoomToLayerRequest((previous) => ({ layerId: targetLayer.id, nonce: (previous?.nonce ?? 0) + 1 }));
     }
-
-    hasAutoZoomedDashboardRef.current = true;
-    setZoomToLayerRequest({
-      layerId: targetLayer.id,
-      nonce: Date.now(),
-    });
-  }, [initialDashboardLayerKey, layers]);
+  }
 
   useEffect(() => {
     // Check if the user has seen the welcome tour. If not, auto-launch it.

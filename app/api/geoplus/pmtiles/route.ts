@@ -4,6 +4,9 @@ import {
   fetchValidatedArchiveResponse,
   getArchiveProxyRequestHeaders,
   getArchiveProxyResponseHeaders,
+  hasArchiveProxySession,
+  isOversizedArchiveResponse,
+  limitStreamBytes,
   resolveValidatedArchiveUrl,
 } from "@/lib/geoplus/archive-proxy";
 
@@ -11,6 +14,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const proxyPmtilesArchive = async (request: NextRequest, method: "GET" | "HEAD") => {
+  if (!hasArchiveProxySession(request)) {
+    return new Response("Authentication required.", { status: 401 });
+  }
+
   const rawTargetUrl = request.nextUrl.searchParams.get("url")?.trim();
   if (!rawTargetUrl) {
     return new Response("Invalid PMTiles URL.", { status: 400 });
@@ -24,7 +31,12 @@ const proxyPmtilesArchive = async (request: NextRequest, method: "GET" | "HEAD")
       headers: getArchiveProxyRequestHeaders(request),
     });
 
-    return new Response(method === "HEAD" ? null : upstreamResponse.body, {
+    if (isOversizedArchiveResponse(upstreamResponse)) {
+      void upstreamResponse.body?.cancel().catch(() => undefined);
+      return new Response("Archive response too large.", { status: 413 });
+    }
+
+    return new Response(method === "HEAD" ? null : limitStreamBytes(upstreamResponse.body), {
       status: upstreamResponse.status,
       statusText: upstreamResponse.statusText,
       headers: getArchiveProxyResponseHeaders(upstreamResponse),

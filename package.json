@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/copy-duckdb.mjs",
+    "predev": "node scripts/copy-duckdb.mjs",
+    "prebuild": "node scripts/copy-duckdb.mjs",
     "dev": "next dev -p 3001",
     "build": "next build",
     "start": "next start -p 3001",

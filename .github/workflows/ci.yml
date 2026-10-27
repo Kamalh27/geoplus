@@ -27,6 +27,9 @@ jobs:
         run: |
           node -e "const v=require('./package.json').version; const [a,b,c]=v.split('.').map(Number); if (!Number.isFinite(a)||!Number.isFinite(b)||!Number.isFinite(c)) { console.error('Invalid semver:', v); process.exit(1); } if (a < 1 || (a === 1 && b === 0 && c < 0)) { console.error('GeoPlus version must be >= 1.0.0. Found:', v); process.exit(1); } console.log('GeoPlus product version:', v);"
 
+      - name: Type check
+        run: npx tsc --noEmit
+
       - name: Lint
         run: npm run lint
 

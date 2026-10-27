@@ -2,8 +2,7 @@ import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import { DragHexagonMode } from "@/lib/geoplus/draw-modes/drag-hexagon-mode";
 // @ts-expect-error This draw mode package does not ship TypeScript declarations.
 import DrawRectangle from "mapbox-gl-draw-rectangle-mode";
-// @ts-expect-error This draw mode package does not ship TypeScript declarations.
-import { DragCircleMode, DirectMode, SimpleSelectMode } from "mapbox-gl-draw-circle";
+import { DragCircleMode, DirectMode, SimpleSelectMode } from "@/lib/geoplus/draw-modes/circle-modes";
 
 export function createDrawControl() {
   return new MapboxDraw({

@@ -50,5 +50,5 @@ Cache helpers: `lib/geoplus/dashboard-cache-storage.ts`.
 ## Key Notes
 
 - This app contains only GeoPlus-focused code. The original `website` app is left untouched for incremental migration.
-- No backend in this directory — it talks to `geo/core/backend` APIs.
+- No backend in this directory — it talks to `platform/core/backend` APIs.
 - `NEXT_PUBLIC_API_URL` controls the backend base URL.

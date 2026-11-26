@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A standalone Next.js geospatial dashboard editor. Extracted from the main `website` app for independent iteration. Users create, edit, and publish geospatial dashboards backed by the `geo/core/backend` API.
+A standalone Next.js geospatial dashboard editor. Extracted from the main `website` app for independent iteration. Users create, edit, and publish geospatial dashboards backed by the `platform/core/backend` API.
 
 ## Commands
 
@@ -38,5 +38,5 @@ OPFS helpers: `lib/geoplus/dashboard-cache-storage.ts`.
 ## Critical Constraints
 
 1. **OPFS conflict resolution**: when OPFS data conflicts with backend response, backend wins. Never silently serve stale OPFS data to viewers.
-2. **No backend code here**: this app is a pure frontend; it calls `geo/core/backend` APIs.
+2. **No backend code here**: this app is a pure frontend; it calls `platform/core/backend` APIs.
 3. **Migration in progress**: the original `website` app still exists. Only code in this `geoplus/` app should be modified for GeoPlus features — do not touch `company/website/` for geoplus work.

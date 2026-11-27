@@ -6,7 +6,7 @@ Standalone Next.js geospatial dashboard editor, extracted from the main `website
 
 ```bash
 npm install
-npm run dev       # :3000
+npm run dev       # :3001
 npm run build
 npm run lint
 npm run test:geoplus
@@ -51,4 +51,17 @@ Cache helpers: `lib/geoplus/dashboard-cache-storage.ts`.
 
 - This app contains only GeoPlus-focused code. The original `website` app is left untouched for incremental migration.
 - No backend in this directory — it talks to `platform/core/backend` APIs.
-- `NEXT_PUBLIC_API_URL` controls the backend base URL.
+- `NEXT_PUBLIC_CORE_BACKEND_URL` controls the backend base URL (dev default `http://localhost:8010`; ports 3000/8000/8001 belong to another project).
+
+## Sign-in (Spadace Account, plan P3-b3)
+
+- GeoPlus is its own Account web client (`geoplus-web-dev`, return address `http://localhost:3001/auth/callback`).
+  Authorisation code + PKCE; logic and tests in `lib/server/account-session.ts` (server-only, Node `crypto` + `fetch`, no
+  dependency). Routes: `GET /api/geoplus/auth/login?next=`, `GET /auth/callback`, `POST /api/geoplus/auth/logout`
+  (same-origin only, answers `{redirect_to}`), pages `/auth/signed-out`, `/auth/error`.
+- Account tokens live only in the sealed (AES-256-GCM, `GEOPLUS_SESSION_KEY`) HttpOnly cookie `geoplus_session`
+  (`__Host-` prefixed and `Secure` in production). Never expose tokens to client code or logs.
+- Renewal: `ensureFreshSession` at 4/5 of the access token's life; the new refresh token is written to the response
+  cookie before the access token is used. Concurrent refreshes are coalesced per process only (see the module comment).
+- Settings: `.env.example` (`ACCOUNT_*`, `GEOPLUS_SESSION_KEY`). Local fake Account: core's `just fake-account`
+  (port 8059, secret `fake-secret-geoplus-web-dev`).

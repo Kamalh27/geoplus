@@ -13,7 +13,7 @@ function normalizeAbsoluteUrl(value: string | undefined): string | null {
   }
 }
 
-const DEFAULT_CORE_BACKEND_URL_DEV = "http://localhost:8000";
+const DEFAULT_CORE_BACKEND_URL_DEV = "http://localhost:8010"; // core API in development (8000 is another project)
 const DEFAULT_CORE_BACKEND_URL_PROD = "https://api.spadace.com";
 
 export const CORE_BACKEND_URL =

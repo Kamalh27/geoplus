@@ -373,7 +373,7 @@ const buildDerivedAnalysisLayer = (args: {
   };
 };
 
-import { getLoginUrl, getLogoutUrl } from "@/lib/geoplus/auth";
+import { getLoginUrl, getLogoutUrl, resolveLogoutTarget } from "@/lib/geoplus/auth";
 
 // Stable default so "no initial layers" is the same reference on every render.
 const NO_INITIAL_LAYERS: GeoPlusLayerItem[] = [];
@@ -459,17 +459,24 @@ export function GeoPlusShell({
   const handleLogin = useCallback(() => {
     setIsAuthLoading(true);
     try {
-      // Redirect to the core platform login.
-      window.location.assign(getLoginUrl(window.location.href));
+      // Sign in through Spadace Account (GeoPlus's own web client); come back to this page.
+      window.location.assign(getLoginUrl(`${window.location.pathname}${window.location.search}`));
     } catch (error) {
       console.error("GeoPlus login redirect failed:", error);
       setIsAuthLoading(false);
     }
   }, []);
 
-  const handleLogout = useCallback(() => {
-    // Redirect to the core platform logout
-    window.location.href = getLogoutUrl(window.location.href);
+  const handleLogout = useCallback(async () => {
+    // The GeoPlus server ends its session and answers Account's end-session address.
+    let target = "/auth/signed-out";
+    try {
+      const response = await fetch(getLogoutUrl(), { method: "POST", credentials: "same-origin", cache: "no-store" });
+      if (response.ok) target = resolveLogoutTarget(await response.json());
+    } catch (error) {
+      console.error("GeoPlus sign-out failed:", error);
+    }
+    window.location.assign(target);
   }, []);
 
   const selectedBasemapRef = useRef<GeoPlusBasemapId>(DEFAULT_GLOBE_BASEMAP_ID);

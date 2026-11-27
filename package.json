@@ -15,7 +15,7 @@
     "lint": "eslint",
     "test:e2e": "playwright test",
     "test:tilesets": "node --import ./tests/node/alias-hooks.mjs --test --experimental-strip-types lib/geoplus/tilesets/*.test.ts",
-    "test:geoplus": "node --import ./tests/node/alias-hooks.mjs --test --experimental-strip-types lib/geoplus/*.test.ts lib/geoplus/tilesets/*.test.ts"
+    "test:geoplus": "node --import ./tests/node/alias-hooks.mjs --test --experimental-strip-types lib/geoplus/*.test.ts lib/geoplus/tilesets/*.test.ts lib/server/*.test.ts"
   },
   "dependencies": {
     "@carbonplan/zarr-layer": "^0.5.2",

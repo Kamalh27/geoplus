@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { GeoPlusShell } from "@/components/geoplus-shell";
 import { CORE_BACKEND_URL } from "@/lib/geoplus/dashboard-storage";
-import { CORE_AUTH_ME_ENDPOINT, AUTH_COOKIE_NAME } from "@/lib/geoplus/auth";
+import { AUTH_COOKIE_NAME } from "@/lib/geoplus/auth";
+import { loadAccountConfig, sessionCookieName, sessionUser, unsealSession } from "@/lib/server/account-session";
 import type { GeoPlusLayerItem, GeoPlusUser } from "@/components/geoplus/types";
 
 export const metadata: Metadata = {
@@ -42,7 +43,27 @@ function normalizeIdentifierParam(value: string | string[] | undefined): string 
   return normalized && SAFE_IDENTIFIER_PATTERN.test(normalized) ? normalized : null;
 }
 
+const CORE_AUTH_ME_ENDPOINT = `${CORE_BACKEND_URL}/api/v1/users/me`;
+
+/**
+ * The person signed in to GeoPlus through Spadace Account (sealed session cookie, P3-b3): profile fields from the
+ * checked ID token, read without a network call. Renewal happens where the Account token is used (P3-b4).
+ */
+async function getAccountUser(): Promise<GeoPlusUser | null> {
+  const config = loadAccountConfig();
+  if (!config) return null;
+  const cookieStore = await cookies();
+  const session = unsealSession(config, cookieStore.get(sessionCookieName(config))?.value);
+  if (!session) return null;
+  const user = sessionUser(session);
+  return { id: user.id, name: user.name || user.email || "Signed-in user", email: user.email };
+}
+
 async function getAuthenticatedUser(): Promise<GeoPlusUser | null> {
+  const accountUser = await getAccountUser();
+  if (accountUser) return accountUser;
+
+  // Transitional (until P3-b4): core's own cookie, when the browser still has one.
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(AUTH_COOKIE_NAME)?.value;
 

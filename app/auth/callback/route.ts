@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { authErrorPath, type AuthErrorCode } from "@/lib/geoplus/auth";
+import { authErrorPath, resolveNextUrl, type AuthErrorCode } from "@/lib/geoplus/auth";
 import {
   AccountUnavailableError,
   finishSignIn,
@@ -47,7 +47,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const target = refusal || !pending ? new URL(authErrorPath(refusal ?? "sign_in_failed"), base) : new URL(pending.next, base);
+  // `next` was sanitised at login start; it is checked again here and must stay on the return address's origin.
+  const target = refusal || !pending ? new URL(authErrorPath(refusal ?? "sign_in_failed"), base) : resolveNextUrl(pending.next, base);
   const response = NextResponse.redirect(target, 303);
   response.headers.set("Cache-Control", "no-store");
   const clearLogin = loginCookie(config, null);

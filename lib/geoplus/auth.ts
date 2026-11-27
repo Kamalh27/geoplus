@@ -63,8 +63,33 @@ export function sanitizeNextPath(raw: unknown): string {
   }
   if (resolved.origin !== LOCAL_BASE) return "/";
   const path = resolved.pathname;
+  // Dot segments collapse while parsing ("/.//evil.com", "/%2e//evil.com", "/a/..//evil.com" all become
+  // "//evil.com"), so the resolved path is checked again: a leading "//" or any backslash would leave this origin.
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\") || /^\/%2f/i.test(path)) return "/";
   if (path === "/auth" || path.startsWith("/auth/") || path === "/api" || path.startsWith("/api/")) return "/";
-  return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+  const result = `${path}${resolved.search}${resolved.hash}`;
+  // The result must parse to the same origin on its own as well.
+  try {
+    if (new URL(result, LOCAL_BASE).origin !== LOCAL_BASE) return "/";
+  } catch {
+    return "/";
+  }
+  return result;
+}
+
+/**
+ * The absolute redirect target after sign-in: `next` sanitised and resolved against `base` (the registered return
+ * address). Anything that would leave `base`'s origin becomes `base`'s `/`.
+ */
+export function resolveNextUrl(next: unknown, base: URL): URL {
+  const fallback = new URL("/", base);
+  let target: URL;
+  try {
+    target = new URL(sanitizeNextPath(next), base);
+  } catch {
+    return fallback;
+  }
+  return target.origin === base.origin ? target : fallback;
 }
 
 /** Where every "please sign in" sends the browser (same origin). */

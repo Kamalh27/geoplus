@@ -166,11 +166,15 @@ export function readAccountConfig(env: Env): AccountClientConfig {
   };
 }
 
-/** `readAccountConfig(process.env)`, or null when sign-in is not configured. */
-export function loadAccountConfig(): AccountClientConfig | null {
+/**
+ * `readAccountConfig(env)`. In development a missing or wrong setting answers null (the "not configured" page);
+ * in production it throws, so a misconfigured server fails loudly instead of quietly offering no sign-in.
+ */
+export function loadAccountConfig(env: Env = process.env): AccountClientConfig | null {
   try {
-    return readAccountConfig(process.env);
-  } catch {
+    return readAccountConfig(env);
+  } catch (error) {
+    if (env.NODE_ENV === "production") throw error;
     return null;
   }
 }
@@ -470,7 +474,9 @@ export function createKeySetCache(options: { issuer: string; fetch: typeof fetch
   return {
     async getKey(kid: string) {
       const at = options.now();
-      if (keys === null || (at - fetchedAt >= KEY_SET_MAX_AGE_SECONDS && at - lastAttempt >= KEY_SET_UNKNOWN_KID_INTERVAL_SECONDS)) {
+      // Never more than one fetch per 60 s, also while no set was ever fetched (Account down at start).
+      const mayFetch = at - lastAttempt >= KEY_SET_UNKNOWN_KID_INTERVAL_SECONDS;
+      if (mayFetch && (keys === null || at - fetchedAt >= KEY_SET_MAX_AGE_SECONDS)) {
         await load(at);
       }
       const current = keys as Map<string, KeyObject> | null;
@@ -804,7 +810,8 @@ export type FreshSession = {
 
 /**
  * The session from its sealed cookie, renewed when four fifths of the access token's life has passed.
- * `signed_out`: no usable sign-in (clear the cookie, sign in again). `unavailable`: Account could not be reached;
+ * `signed_out`: no usable sign-in (clear the cookie, sign in again). `unavailable`: Account could not be reached
+ * or refused without spending the refresh token;
  * the session is kept (with the new refresh token if Account rotated it before failing) to try again later.
  */
 export async function ensureFreshSession(
@@ -831,7 +838,9 @@ export async function ensureFreshSession(
     });
     return { outcome: "renewed", session: renewed, setCookie: sealSession(config, renewed) };
   } catch (error) {
-    if (error instanceof SignInError) return { outcome: "signed_out", session: null, setCookie: null };
+    // Only a spent refresh token ends the session. A refusal that spends nothing (a refused organisation or
+    // audience, ID-32) keeps it, like Account being down: the caller answers 503 and the cookie stays.
+    if (error instanceof SignInError && error.endsSession) return { outcome: "signed_out", session: null, setCookie: null };
     const kept = saved.value;
     return kept
       ? { outcome: "unavailable", session: kept, setCookie: sealSession(config, kept) }

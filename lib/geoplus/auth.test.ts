@@ -6,8 +6,25 @@ import {
   getLoginUrl,
   parseAuthErrorCode,
   resolveLogoutTarget,
+  resolveNextUrl,
   sanitizeNextPath,
 } from "./auth.ts";
+
+// Dot segments collapse during URL parsing: each of these resolves to the path `//evil.com`, which a browser
+// then reads as another host. Encoded dots and slashes are included.
+const DOT_SEGMENT_REDIRECTS = [
+  "/.//evil.com",
+  "/..//evil.com",
+  "/%2e//evil.com",
+  "/%2E//evil.com",
+  "/%2e%2e//evil.com",
+  "/%2E%2E//evil.com",
+  "/a/..//evil.com",
+  "/a/%2e%2e//evil.com",
+  "/./\\evil.com",
+  "/.//evil.com/path?x=1",
+  "/%2e/%2fevil.com",
+];
 
 test("sanitizeNextPath keeps local paths with query and hash", () => {
   assert.equal(sanitizeNextPath("/"), "/");
@@ -34,6 +51,25 @@ test("sanitizeNextPath refuses other origins, tricks and sign-in loops", () => {
     42,
   ];
   for (const value of unsafe) assert.equal(sanitizeNextPath(value), "/", String(value));
+});
+
+test("sanitizeNextPath refuses paths that collapse to //host (open redirect)", () => {
+  for (const value of DOT_SEGMENT_REDIRECTS) {
+    const safe = sanitizeNextPath(value);
+    assert.ok(!safe.startsWith("//") && !safe.includes("\\"), `${value} -> ${safe}`);
+    assert.equal(new URL(safe, "http://localhost:3001").origin, "http://localhost:3001", value);
+  }
+  assert.equal(sanitizeNextPath("/a/../b?c=1"), "/b?c=1");
+});
+
+test("resolveNextUrl stays on the given origin whatever next is", () => {
+  const base = new URL("http://localhost:3001/auth/callback");
+  assert.equal(resolveNextUrl("/?id=abc", base).toString(), "http://localhost:3001/?id=abc");
+  for (const value of [...DOT_SEGMENT_REDIRECTS, "//evil.com", "https://evil.com/", "/\\evil.com", null, ""]) {
+    const target = resolveNextUrl(value, base);
+    assert.equal(target.origin, "http://localhost:3001", String(value));
+  }
+  assert.equal(resolveNextUrl("/.//evil.com", base).toString(), "http://localhost:3001/");
 });
 
 test("getLoginUrl builds the same-origin login start", () => {

@@ -14,6 +14,7 @@ import {
   ensureFreshSession,
   finishSignIn,
   isSameOriginRequest,
+  loadAccountConfig,
   loginCookie,
   pkceChallenge,
   readAccountConfig,
@@ -207,6 +208,26 @@ test("readAccountConfig: refuses a missing secret, a short key and development s
   const { ACCOUNT_ISSUER: _issuer, ...noIssuer } = prod;
   void _issuer;
   assert.throws(() => readAccountConfig(noIssuer), AccountConfigError);
+});
+
+test("loadAccountConfig: null in development when not configured, throws in production", () => {
+  assert.equal(loadAccountConfig({}), null);
+  assert.equal(loadAccountConfig({ NODE_ENV: "development", GEOPLUS_SESSION_KEY: "short" }), null);
+  assert.ok(loadAccountConfig({ ACCOUNT_WEB_CLIENT_SECRET: "s", GEOPLUS_SESSION_KEY: b64u(KEY_A) }));
+  assert.throws(() => loadAccountConfig({ NODE_ENV: "production" }), AccountConfigError);
+  assert.throws(
+    () =>
+      loadAccountConfig({
+        NODE_ENV: "production",
+        ACCOUNT_ISSUER: "https://account.spadace.com",
+        ACCOUNT_WEB_CLIENT_ID: "geoplus-web",
+        ACCOUNT_WEB_CLIENT_SECRET: "s",
+        ACCOUNT_WEB_REDIRECT_URI: "https://geoplus.spadace.com/auth/callback",
+        ACCOUNT_WEB_SIGNED_OUT_URI: "https://geoplus.spadace.com/auth/signed-out",
+        GEOPLUS_SESSION_KEY: "short",
+      }),
+    AccountConfigError,
+  );
 });
 
 test("readAccountConfig: the error message never contains the secret or the key", () => {
@@ -415,6 +436,24 @@ test("createKeySetCache: fetches once, keeps only ES256 signing keys, refetches 
   now += 3600;
   assert.ok(await cache.getKey(KID));
   assert.equal(calls.length, 3, "refetched after 60 minutes");
+});
+
+test("createKeySetCache: while no set was ever fetched, fetches at most once per 60 s", async () => {
+  let now = NOW;
+  const calls: Call[] = [];
+  const fetchFn = fakeFetch([new Error("down"), json(503, {}), json(200, { keys: [publicJwk(signer.publicKey, KID)] })], calls);
+  const cache = createKeySetCache({ issuer: ISSUER, fetch: fetchFn, now: () => now });
+  assert.equal(await cache.getKey(KID), null);
+  assert.equal(await cache.getKey(KID), null);
+  now += 30;
+  assert.equal(await cache.getKey(KID), null);
+  assert.equal(calls.length, 1, "no refetch within 60 s of a failed first fetch");
+  now += 31;
+  assert.equal(await cache.getKey(KID), null);
+  assert.equal(calls.length, 2);
+  now += 60;
+  assert.ok(await cache.getKey(KID));
+  assert.equal(calls.length, 3);
 });
 
 test("createKeySetCache: a failed fetch keeps the set it has; a new set replaces the old one completely", async () => {
@@ -641,6 +680,23 @@ test("ensureFreshSession: no cookie, fresh, due for renewal, ended, Account down
   });
   assert.equal(down.outcome, "unavailable");
   assert.equal(down.setCookie, undefined, "the session is kept to try again later");
+
+  // A refusal that does not spend the refresh token keeps the session (no cookie change).
+  const refusedOrg = await ensureFreshSession(cfg, sealSession(cfg, session({ refreshToken: "spr_org", accessIssuedAt: NOW - 250, accessExpiresAt: NOW + 50 })), {
+    fetch: fakeFetch([json(400, { error: "invalid_grant", code: "organisation_access_ended" })]),
+    now: () => NOW,
+    coordinator,
+  });
+  assert.equal(refusedOrg.outcome, "unavailable");
+  assert.equal(refusedOrg.setCookie, undefined);
+  assert.equal(refusedOrg.session?.refreshToken, "spr_org");
+  const refusedAudience = await ensureFreshSession(cfg, sealSession(cfg, session({ refreshToken: "spr_aud", accessIssuedAt: NOW - 250, accessExpiresAt: NOW + 50 })), {
+    fetch: fakeFetch([json(400, { error: "invalid_target", code: "product_not_linked" })]),
+    now: () => NOW,
+    coordinator,
+  });
+  assert.equal(refusedAudience.outcome, "unavailable");
+  assert.equal(refusedAudience.setCookie, undefined);
 
   const tooOld = await ensureFreshSession(cfg, sealSession(cfg, session({ signedInAt: NOW - 31 * 24 * 3600 })), {
     fetch: fakeFetch([]),

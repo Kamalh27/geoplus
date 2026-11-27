@@ -2,7 +2,7 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import type { NextRequest } from "next/server";
 import { Agent } from "undici";
-import { loadAccountConfig, nowSeconds, SIGN_IN_MAX_LIFETIME_SECONDS, sessionCookieName, unsealSession } from "@/lib/server/account-session";
+import { loadAccountConfig, nowSeconds, sessionCookieName, signInHasEnded, unsealSession } from "@/lib/server/account-session";
 
 const REQUEST_HEADER_NAMES = ["range", "if-none-match", "if-modified-since"] as const;
 const RESPONSE_HEADER_NAMES = [
@@ -308,7 +308,7 @@ export const hasArchiveProxySession = (request: NextRequest, now: () => number =
   }
   if (!config) return false;
   const session = unsealSession(config, request.cookies.get(sessionCookieName(config))?.value);
-  return Boolean(session && now() < session.signedInAt + SIGN_IN_MAX_LIFETIME_SECONDS);
+  return Boolean(session && !signInHasEnded(session, now()));
 };
 
 /**

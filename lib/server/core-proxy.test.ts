@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   createRefreshCoordinator,
   sealSession,
+  userIfSignedIn,
   unsealSession,
   type AccountClientConfig,
   type AccountSession,
@@ -12,6 +13,7 @@ import {
 import {
   coreBackendUrl,
   coreTargetUrl,
+  fetchCoreAnonymously,
   fetchCoreWithCurrentSession,
   proxyCoreRequest,
   serializeCookie,
@@ -452,8 +454,8 @@ test("Account refuses the renewal for good: 401, cookie cleared, core not called
   assert.equal(body.login_url, `/api/geoplus/auth/login?${new URLSearchParams({ next: "/?id=z" })}`);
 });
 
-test("Account unreachable: 503, the session is kept (no cookie change), core not called", async () => {
-  const due = session({ accessIssuedAt: NOW - 250, accessExpiresAt: NOW + 50 });
+test("Account unreachable and the access token expired: 503, the session is kept (no cookie change), core not called", async () => {
+  const due = session({ accessIssuedAt: NOW - 400, accessExpiresAt: NOW - 10 });
   const { options, calls, cfg } = setup([new Error("down")]);
   const response = await proxyCoreRequest(req("/api/core/api/v1/projects", { headers: signedIn(cfg, due) }), options);
   assert.equal(response.status, 503);
@@ -462,9 +464,9 @@ test("Account unreachable: 503, the session is kept (no cookie change), core not
   assert.equal(calls.length, 1);
 });
 
-test("a refusal that does not spend the refresh token is 503 and keeps the session", async () => {
+test("a refusal that does not spend the refresh token is 503 (token expired) and keeps the session", async () => {
   for (const code of ["organisation_access_ended", "product_not_linked"]) {
-    const due = session({ accessIssuedAt: NOW - 250, accessExpiresAt: NOW + 50 });
+    const due = session({ accessIssuedAt: NOW - 400, accessExpiresAt: NOW - 10 });
     const { options, cfg } = setup([json(400, { error: "invalid_target", code })]);
     const response = await proxyCoreRequest(req("/api/core/api/v1/projects", { headers: signedIn(cfg, due) }), options);
     assert.equal(response.status, 503, code);
@@ -472,8 +474,8 @@ test("a refusal that does not spend the refresh token is 503 and keeps the sessi
   }
 });
 
-test("Account rotates then fails: 503, and the rotated refresh token is saved in the cookie", async () => {
-  const due = session({ accessIssuedAt: NOW - 250, accessExpiresAt: NOW + 50 });
+test("Account rotates then fails, token expired: 503, and the rotated refresh token is saved in the cookie", async () => {
+  const due = session({ accessIssuedAt: NOW - 400, accessExpiresAt: NOW - 10 });
   // A new refresh token arrives, but no usable access token: the new refresh token must not be lost.
   const { options, cfg } = setup([json(200, { token_type: "Bearer", refresh_token: "spr_refresh-2" })]);
   const response = await proxyCoreRequest(req("/api/core/api/v1/projects", { headers: signedIn(cfg, due) }), options);
@@ -567,4 +569,133 @@ test("fetchCoreWithCurrentSession: uses the access token as it is, never renews,
   assert.equal(await fetchCoreWithCurrentSession(cfg, sealSession(cfg, session()), "/static/x", {}, { ...deps, fetch: none }), null);
   const down = await fetchCoreWithCurrentSession(cfg, sealSession(cfg, session()), "/api/v1/x", {}, { ...deps, fetch: fakeFetch([new Error("down")]) });
   assert.equal(down, null);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Review fixes: renewal trouble with a still-valid token, header timeout, public pages, 30-day limit
+// ---------------------------------------------------------------------------------------------
+
+test("renewal unavailable but the access token is still valid: the call proceeds with it", async () => {
+  const due = session({ accessIssuedAt: NOW - 250, accessExpiresAt: NOW + 50 });
+  for (const failure of [new Error("down"), json(400, { error: "invalid_target", code: "product_not_linked" })]) {
+    const { options, calls, cfg } = setup([failure, json(200, { ok: true })]);
+    const response = await proxyCoreRequest(req("/api/core/api/v1/projects", { headers: signedIn(cfg, due) }), options);
+    assert.equal(response.status, 200);
+    assert.equal(calls.length, 2);
+    assert.equal(headerOf(calls[1], "authorization"), "Bearer access-token-1");
+    assert.equal(setCookies(response).length, 0, "nothing was rotated");
+  }
+});
+
+test("renewal rotated the refresh token then failed, access token still valid: proceeds and saves the rotated cookie", async () => {
+  const due = session({ accessIssuedAt: NOW - 250, accessExpiresAt: NOW + 50 });
+  const { options, calls, cfg } = setup([json(200, { token_type: "Bearer", refresh_token: "spr_refresh-2" }), json(200, {})]);
+  const response = await proxyCoreRequest(req("/api/core/api/v1/projects", { headers: signedIn(cfg, due) }), options);
+  assert.equal(response.status, 200);
+  assert.equal(headerOf(calls[1], "authorization"), "Bearer access-token-1");
+  const [cookie] = setCookies(response);
+  const value = decodeURIComponent(cookie.split(";")[0].slice("geoplus_session=".length));
+  assert.equal(unsealSession(cfg, value)?.refreshToken, "spr_refresh-2");
+});
+
+test("renewal unavailable and the access token expired exactly now: 503", async () => {
+  const due = session({ accessIssuedAt: NOW - 300, accessExpiresAt: NOW });
+  const { options, calls, cfg } = setup([new Error("down")]);
+  const response = await proxyCoreRequest(req("/api/core/api/v1/projects", { headers: signedIn(cfg, due) }), options);
+  assert.equal(response.status, 503);
+  assert.equal(calls.length, 1);
+});
+
+test("core does not answer headers in time: 504, the wait is bounded and the request is aborted", async () => {
+  const { cfg } = setup([]);
+  let aborted = false;
+  const hanging = ((_input: RequestInfo | URL, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => {
+        aborted = true;
+        reject(new DOMException("aborted", "AbortError"));
+      });
+    })) as typeof fetch;
+  const options: CoreProxyOptions = {
+    config: cfg,
+    deps: { fetch: hanging, now: () => NOW, coordinator: createRefreshCoordinator() },
+    coreBaseUrl: CORE,
+    allowedOrigins: [ORIGIN],
+    headerTimeoutMs: 20,
+  };
+  const response = await proxyCoreRequest(req("/api/core/api/v1/projects", { headers: signedIn(cfg) }), options);
+  assert.equal(response.status, 504);
+  assert.deepEqual(await response.json(), { error: "core_timeout" });
+  assert.equal(aborted, true);
+});
+
+test("the timeout is cleared once headers arrive: a slow body is not cut", async () => {
+  const { cfg } = setup([]);
+  let signal: AbortSignal | undefined;
+  const slow = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    signal = init?.signal ?? undefined;
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        controller.enqueue(new TextEncoder().encode("a"));
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        controller.enqueue(new TextEncoder().encode("b"));
+        controller.close();
+      },
+    });
+    return new Response(body, { status: 200 });
+  }) as typeof fetch;
+  const options: CoreProxyOptions = {
+    config: cfg,
+    deps: { fetch: slow, now: () => NOW, coordinator: createRefreshCoordinator() },
+    coreBaseUrl: CORE,
+    allowedOrigins: [ORIGIN],
+    headerTimeoutMs: 20,
+  };
+  const response = await proxyCoreRequest(req("/api/core/api/v1/projects", { headers: signedIn(cfg) }), options);
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "ab");
+  assert.equal(signal?.aborted, false);
+});
+
+test("the client going away is not a timeout (502, not 504)", async () => {
+  const { cfg } = setup([]);
+  const controller = new AbortController();
+  const hanging = ((_input: RequestInfo | URL, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      setTimeout(() => controller.abort(), 5);
+    })) as typeof fetch;
+  const options: CoreProxyOptions = {
+    config: cfg,
+    deps: { fetch: hanging, now: () => NOW, coordinator: createRefreshCoordinator() },
+    coreBaseUrl: CORE,
+    allowedOrigins: [ORIGIN],
+    headerTimeoutMs: 5_000,
+  };
+  const response = await proxyCoreRequest(req("/api/core/api/v1/projects", { headers: signedIn(cfg), signal: controller.signal }), options);
+  assert.equal(response.status, 502);
+});
+
+test("fetchCoreAnonymously sends no Authorization and no cookie, only /api/v1 paths", async () => {
+  const calls: Call[] = [];
+  const deps = { fetch: fakeFetch([json(200, { layers: [] })], calls), coreBaseUrl: CORE };
+  const ok = await fetchCoreAnonymously("/api/v1/geoplus/dashboards/abc/public", deps);
+  assert.equal(ok?.status, 200);
+  assert.equal(calls[0].url, `${CORE}/api/v1/geoplus/dashboards/abc/public`);
+  assert.equal(headerOf(calls[0], "authorization"), null);
+  assert.equal(headerOf(calls[0], "cookie"), null);
+  assert.equal(calls[0].init.redirect, "error");
+  assert.equal(await fetchCoreAnonymously("/static/x", { ...deps, fetch: fakeFetch([]) }), null);
+  assert.equal(await fetchCoreAnonymously("/api/v1/x", { ...deps, fetch: fakeFetch([new Error("down")]) }), null);
+});
+
+test("userIfSignedIn: the user from a sealed session, until the 30-day sign-in ends", () => {
+  const cfg = config();
+  const ok = userIfSignedIn(cfg, sealSession(cfg, session()), NOW);
+  assert.equal(ok?.email, "amina@example.test");
+  assert.equal(ok?.name, "Amina Rahman");
+  assert.equal(userIfSignedIn(cfg, sealSession(cfg, session({ signedInAt: NOW - 30 * 24 * 3600 })), NOW), null, "exactly 30 days is over");
+  assert.ok(userIfSignedIn(cfg, sealSession(cfg, session({ signedInAt: NOW - 30 * 24 * 3600 + 1 })), NOW));
+  assert.equal(userIfSignedIn(cfg, "garbage", NOW), null);
+  assert.equal(userIfSignedIn(cfg, undefined, NOW), null);
 });

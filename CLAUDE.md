@@ -75,8 +75,12 @@ Cache helpers: `lib/geoplus/dashboard-cache-storage.ts`.
 - Rules (tested): path allow-list `/api/v1/...` only; no cookie ever forwarded to core; request/response headers on
   an allow-list; state-changing calls same-origin only; `redirect: "error"` upstream; no token logging.
   No session or core 401 -> 401 `{error:"signed_out", login_url}`; Account unreachable -> 503 (session kept); core
-  unreachable -> 502.
+  unreachable -> 502, no headers within 60 s -> 504 (timer cleared once headers arrive, streams are not cut).
+  If renewal fails but the access token is still valid the call proceeds with it; 503 only once it has expired.
+- `coreFetch` reads a 401 `signed_out` answer and sends the browser to its `login_url` (re-sanitised; at most once
+  per 30 s via sessionStorage).
 - `app/page.tsx` reads core with the access token as it is (`fetchCoreWithCurrentSession`): a page cannot write the
-  renewed cookie, so it never renews; without a usable token the browser loads the data through the proxy.
+  renewed cookie, so it never renews; without a usable token the browser loads the data through the proxy. Public
+  dashboards are read anonymously (`fetchCoreAnonymously`, no bearer). The header user is null after the 30-day limit.
 - Saved dashboard files under `/static/uploads/dashboards/` are public and still fetched from core directly, without
   credentials (`buildDashboardLayerFetchTargets`).

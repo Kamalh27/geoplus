@@ -165,7 +165,12 @@ export type CoreProxyOptions = {
   coreBaseUrl: string;
   /** Origins that may make this server change something: its own, and the registered return address's. */
   allowedOrigins: string[];
+  /** How long core may take to answer with headers (default 60 s). The body is not limited: streams are not cut. */
+  headerTimeoutMs?: number;
 };
+
+/** Long enough for geoprocessing calls that answer only when done. */
+export const DEFAULT_HEADER_TIMEOUT_MS = 60_000;
 
 /** Where a "please sign in" answer sends the browser: back to the page that asked (same origin only, sanitised). */
 function signInAddress(request: Request, allowedOrigins: string[]): string {
@@ -192,7 +197,7 @@ const signedOutAnswer = (request: Request, allowedOrigins: string[], cookie: str
 };
 
 export async function proxyCoreRequest(request: Request, options: CoreProxyOptions): Promise<Response> {
-  const { config, deps, coreBaseUrl, allowedOrigins } = options;
+  const { config, deps, coreBaseUrl, allowedOrigins, headerTimeoutMs = DEFAULT_HEADER_TIMEOUT_MS } = options;
   const method = request.method.toUpperCase();
   if (!ALLOWED_METHODS.includes(method)) {
     return jsonAnswer(405, { error: "method_not_allowed" }, new Headers({ Allow: ALLOWED_METHODS.join(", ") }));
@@ -234,7 +239,9 @@ export async function proxyCoreRequest(request: Request, options: CoreProxyOptio
   if (fresh.outcome === "none" || fresh.outcome === "signed_out" || !fresh.session) {
     return signedOutAnswer(request, allowedOrigins, cookie);
   }
-  if (fresh.outcome === "unavailable") {
+  // Renewal failed without ending the session: the current access token is still good until it expires, so the call
+  // goes ahead with it; only an expired token gives 503 (the session is kept either way).
+  if (fresh.outcome === "unavailable" && deps.now() >= fresh.session.accessExpiresAt) {
     return withCookie(jsonAnswer(503, { error: "account_unavailable" }));
   }
 
@@ -245,12 +252,19 @@ export async function proxyCoreRequest(request: Request, options: CoreProxyOptio
   }
   headers.set("Authorization", `Bearer ${fresh.session.accessToken}`);
 
+  // Bounded wait for core's headers; cleared once they arrive so a long stream is never cut.
+  const timeout = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    timeout.abort();
+  }, headerTimeoutMs);
   const init: RequestInit & { duplex?: "half" } = {
     method,
     headers,
     redirect: "error",
     cache: "no-store",
-    signal: request.signal,
+    signal: AbortSignal.any([request.signal, timeout.signal]),
   };
   if (METHODS_WITH_BODY.has(method) && request.body) {
     init.body = request.body;
@@ -261,8 +275,10 @@ export async function proxyCoreRequest(request: Request, options: CoreProxyOptio
   try {
     upstream = await deps.fetch(target.toString(), init);
   } catch {
-    // Unreachable core, a refused redirect, or the browser went away. Nothing from the error is shown or logged.
-    return withCookie(jsonAnswer(502, { error: "core_unavailable" }));
+    // Unreachable core, a refused redirect, a timeout, or the browser went away. Nothing from the error is shown or logged.
+    return withCookie(timedOut ? jsonAnswer(504, { error: "core_timeout" }) : jsonAnswer(502, { error: "core_unavailable" }));
+  } finally {
+    clearTimeout(timer);
   }
 
   if (upstream.status === 401) {
@@ -312,6 +328,24 @@ export async function fetchCoreWithCurrentSession(
   headers.set("Authorization", `Bearer ${session.accessToken}`);
   try {
     return await deps.fetch(target.toString(), { ...init, headers, redirect: "error", cache: "no-store" });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * An anonymous GET to core from a server page (public dashboards): no Authorization, no cookie, so the answer never
+ * depends on who is signed in. Null for a path outside `/api/v1/` or when core cannot be reached.
+ */
+export async function fetchCoreAnonymously(
+  path: string,
+  deps: { fetch: typeof fetch; coreBaseUrl: string },
+): Promise<Response | null> {
+  const queryAt = path.indexOf("?");
+  const target = coreTargetUrl(queryAt < 0 ? path : path.slice(0, queryAt), queryAt < 0 ? "" : path.slice(queryAt), deps.coreBaseUrl);
+  if (!target) return null;
+  try {
+    return await deps.fetch(target.toString(), { method: "GET", redirect: "error", cache: "no-store" });
   } catch {
     return null;
   }

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { GeoPlusShell } from "@/components/geoplus-shell";
-import { loadAccountConfig, nowSeconds, sessionCookieName, sessionUser, unsealSession } from "@/lib/server/account-session";
-import { coreBackendUrl, fetchCoreWithCurrentSession } from "@/lib/server/core-proxy";
+import { loadAccountConfig, nowSeconds, sessionCookieName, userIfSignedIn } from "@/lib/server/account-session";
+import { coreBackendUrl, fetchCoreAnonymously, fetchCoreWithCurrentSession } from "@/lib/server/core-proxy";
 import type { GeoPlusLayerItem, GeoPlusUser } from "@/components/geoplus/types";
 
 export const metadata: Metadata = {
@@ -44,35 +44,29 @@ function normalizeIdentifierParam(value: string | string[] | undefined): string 
 
 /**
  * The person signed in to GeoPlus through Spadace Account (sealed session cookie, P3-b3): profile fields from the
- * checked ID token, read without a network call.
+ * checked ID token, read without a network call. Null once the 30-day sign-in has ended, so the header never shows
+ * "signed in" while every call answers 401.
  */
 async function getAuthenticatedUser(sealedSession: string | undefined): Promise<GeoPlusUser | null> {
   const config = loadAccountConfig();
   if (!config) return null;
-  const session = unsealSession(config, sealedSession);
-  if (!session) return null;
-  const user = sessionUser(session);
+  const user = userIfSignedIn(config, sealedSession, nowSeconds());
+  if (!user) return null;
   return { id: user.id, name: user.name || user.email || "Signed-in user", email: user.email };
 }
 
 /**
- * A GET to core for this page's first paint, with the session's access token as it is (P3-b4). A page cannot write
- * the renewed session cookie, so it never renews: with no usable token this answers null and the browser loads the
- * same data through `/api/core`, which renews. `allowAnonymous` is for public dashboards.
+ * A GET to core for this page's first paint (P3-b4). A public dashboard is always read anonymously (least
+ * privilege: it must show for anyone, whatever their organisation). Anything else uses the session's access token as
+ * it is: a page cannot write the renewed session cookie, so it never renews; with no usable token this answers null
+ * and the browser loads the same data through `/api/core`, which renews.
  */
-async function coreGet(sealedSession: string | undefined, path: string, allowAnonymous = false): Promise<Response | null> {
-  const config = loadAccountConfig();
+async function coreGet(sealedSession: string | undefined, path: string, anonymous = false): Promise<Response | null> {
   const base = coreBackendUrl();
-  if (config && sealedSession) {
-    const response = await fetchCoreWithCurrentSession(config, sealedSession, path, {}, { fetch, now: nowSeconds, coreBaseUrl: base });
-    if (response) return response;
-  }
-  if (!allowAnonymous) return null;
-  try {
-    return await fetch(`${base}${path}`, { cache: "no-store", redirect: "error" });
-  } catch {
-    return null;
-  }
+  if (anonymous) return fetchCoreAnonymously(path, { fetch, coreBaseUrl: base });
+  const config = loadAccountConfig();
+  if (!config || !sealedSession) return null;
+  return fetchCoreWithCurrentSession(config, sealedSession, path, {}, { fetch, now: nowSeconds, coreBaseUrl: base });
 }
 
 export default async function GeoPlusPage({ searchParams }: PageProps) {

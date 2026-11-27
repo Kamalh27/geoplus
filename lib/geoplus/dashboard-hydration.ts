@@ -7,6 +7,7 @@ import {
   readCachedDashboardAsset,
   writeCachedDashboardAsset,
 } from "@/lib/geoplus/dashboard-cache-storage";
+import { coreApiUrl } from "./core-api";
 import { CORE_BACKEND_URL } from "./dashboard-storage";
 
 export function requiresDashboardLayerHydration(layer: GeoPlusLayerItem): boolean {
@@ -24,35 +25,54 @@ export function requiresDashboardLayerHydration(layer: GeoPlusLayerItem): boolea
   );
 }
 
-function buildDashboardLayerFetchUrls(sourceUrl: string): string[] {
+export type DashboardLayerFetchTarget = {
+  url: string;
+  /** True: a same-origin call through the core proxy (carries the session). Otherwise a plain request without credentials. */
+  viaCoreProxy: boolean;
+};
+
+const isCoreApiPath = (path: string) => path.startsWith("/api/v1/");
+
+/**
+ * Where to fetch a saved layer's data. Core API paths go through GeoPlus's own server (`/api/core`, which adds the
+ * sign-in); the public dashboard files under `/static/uploads/dashboards/` are fetched from core directly, without
+ * credentials; anything else is fetched as given, without credentials.
+ */
+export function buildDashboardLayerFetchTargets(sourceUrl: string, coreBackendUrl: string = CORE_BACKEND_URL): DashboardLayerFetchTarget[] {
   const trimmedSourceUrl = sourceUrl.trim();
   if (!trimmedSourceUrl) {
     return [];
   }
 
+  const direct = (url: string): DashboardLayerFetchTarget => ({ url, viaCoreProxy: false });
+  const proxied = (pathAndQuery: string): DashboardLayerFetchTarget => ({ url: coreApiUrl(pathAndQuery), viaCoreProxy: true });
+
   if (!trimmedSourceUrl.startsWith("http")) {
-    return [
-      `${CORE_BACKEND_URL}${trimmedSourceUrl.startsWith("/") ? "" : "/"}${trimmedSourceUrl}`,
-    ];
+    const path = trimmedSourceUrl.startsWith("/") ? trimmedSourceUrl : `/${trimmedSourceUrl}`;
+    try {
+      return [isCoreApiPath(path) ? proxied(path) : direct(`${coreBackendUrl}${path}`)];
+    } catch {
+      return [];
+    }
   }
 
   try {
     const parsedUrl = new URL(trimmedSourceUrl);
-    const canonicalBackendUrl = new URL(CORE_BACKEND_URL);
-    const nextUrls: string[] = [];
+    const canonicalBackendUrl = new URL(coreBackendUrl);
 
-    if (parsedUrl.pathname.startsWith("/static/uploads/dashboards/")) {
-      const canonicalDatasetUrl = new URL(
-        `${parsedUrl.pathname}${parsedUrl.search}`,
-        canonicalBackendUrl,
-      ).toString();
-      nextUrls.push(canonicalDatasetUrl);
+    if (parsedUrl.origin === canonicalBackendUrl.origin && isCoreApiPath(parsedUrl.pathname)) {
+      return [proxied(`${parsedUrl.pathname}${parsedUrl.search}`)];
     }
 
-    nextUrls.push(parsedUrl.toString());
-    return [...new Set(nextUrls)];
+    const nextTargets: DashboardLayerFetchTarget[] = [];
+    if (parsedUrl.pathname.startsWith("/static/uploads/dashboards/")) {
+      nextTargets.push(direct(new URL(`${parsedUrl.pathname}${parsedUrl.search}`, canonicalBackendUrl).toString()));
+    }
+    nextTargets.push(direct(parsedUrl.toString()));
+    const seen = new Set<string>();
+    return nextTargets.filter((target) => (seen.has(target.url) ? false : (seen.add(target.url), true)));
   } catch {
-    return [trimmedSourceUrl];
+    return [direct(trimmedSourceUrl)];
   }
 }
 
@@ -132,7 +152,7 @@ export async function hydrateDashboardLayers(
           // 1. Fetch the remote zipped/raw dataset.
           // Prefer the current backend origin for GeoPlus static dashboard files, then fall back
           // to the original stored absolute URL if needed.
-          const fetchUrls = buildDashboardLayerFetchUrls(layer.sourceUrl ?? "");
+          const fetchTargets = buildDashboardLayerFetchTargets(layer.sourceUrl ?? "");
           let blob: Blob | null = null;
           let lastFetchError: Error | null = null;
           const assetCacheKey = layer.sourceUrl
@@ -147,11 +167,11 @@ export async function hydrateDashboardLayers(
           }
 
           if (!blob) {
-            for (const fetchUrl of fetchUrls) {
+            for (const { url: fetchUrl, viaCoreProxy } of fetchTargets) {
               try {
                 const response = await fetch(fetchUrl, {
                   cache: "no-store",
-                  credentials: "include",
+                  credentials: viaCoreProxy ? "same-origin" : "omit",
                 });
                 if (!response.ok) {
                   throw new Error(`Failed to fetch layer data: ${response.status} ${response.statusText}`);

@@ -29,7 +29,7 @@ import {
   type ParsedUploadLayer,
 } from "@/lib/geoplus/upload-parsers";
 import type { GeoPlusUser } from "@/components/geoplus/types";
-import { CORE_BACKEND_URL } from "@/lib/geoplus/dashboard-storage";
+import { coreFetch } from "@/lib/geoplus/core-api";
 import { cn } from "@/lib/utils";
 
 type AddDataDialogProps = {
@@ -334,10 +334,7 @@ export function AddDataDialog({ onAddLayer, existingLayers, user, isAuthLoading,
     setHostedLayersError(null);
 
     try {
-      const response = await fetch(`${CORE_BACKEND_URL}/api/v1/layers?status=published&limit=200&offset=0`, {
-        credentials: "include",
-        cache: "no-store",
-      });
+      const response = await coreFetch("/api/v1/layers?status=published&limit=200&offset=0");
 
       if (response.status === 401) {
         throw new Error("Please sign in to view published layers.");
@@ -374,13 +371,7 @@ export function AddDataDialog({ onAddLayer, existingLayers, user, isAuthLoading,
     setLayerConfigError("");
     setIsSubmitting(true);
     try {
-      const response = await fetch(
-        `${CORE_BACKEND_URL}/api/v1/tilesets/dynamic-url?layer_uid=${encodeURIComponent(layer.id)}`,
-        {
-          credentials: "include",
-          cache: "no-store",
-        },
-      );
+      const response = await coreFetch(`/api/v1/tilesets/dynamic-url?layer_uid=${encodeURIComponent(layer.id)}`);
 
       if (response.status === 401) {
         throw new Error("Please sign in to add published layers.");

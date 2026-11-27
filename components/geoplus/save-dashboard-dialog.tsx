@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import type { GeoPlusLayerItem, GeoPlusUser } from "@/components/geoplus/types";
-import { prepareLayersForSave, CORE_BACKEND_URL } from "@/lib/geoplus/dashboard-storage";
+import { coreFetch } from "@/lib/geoplus/core-api";
+import { prepareLayersForSave } from "@/lib/geoplus/dashboard-storage";
 import { writeCachedDashboard } from "@/lib/geoplus/dashboard-cache-storage";
 import type { AppSettings } from "@/components/geoplus/use-app-settings";
 
@@ -100,10 +101,7 @@ export function SaveDashboardDialog({
 
     const loadProjects = async () => {
       try {
-        const response = await fetch(`${CORE_BACKEND_URL}/api/v1/projects?limit=200&offset=0`, {
-          credentials: "include",
-          cache: "no-store",
-        });
+        const response = await coreFetch("/api/v1/projects?limit=200&offset=0");
 
         if (!response.ok) {
           if (response.status === 401) {
@@ -196,10 +194,9 @@ export function SaveDashboardDialog({
       setStatusMessage("Saving dashboard metadata...");
 
       // 3. Save dashboard metadata to the dedicated geoplus endpoint
-      const response = await fetch(`${CORE_BACKEND_URL}/api/v1/geoplus/dashboards`, {
+      const response = await coreFetch("/api/v1/geoplus/dashboards", {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           id: dashboardId, // Include the ID
           name: dashboardName,

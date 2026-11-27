@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 import type { GeoPlusLayerItem } from "@/components/geoplus/types";
+import { coreFetch } from "@/lib/geoplus/core-api";
 import { isOpfsUrl, resolveLayerFileUrl } from "@/lib/geoplus/opfs-storage";
 
 function normalizeAbsoluteUrl(value: string | undefined): string | null {
@@ -68,10 +69,9 @@ export async function uploadDashboardLayerToCore(
   formData.append("dataset_name", datasetName);
   formData.append("dashboard_id", dashboardId); // Send dashboard_id to backend
   
-  const response = await fetch(`${CORE_BACKEND_URL}/api/v1/geoplus/uploads/datasets`, {
-    method: 'POST',
+  const response = await coreFetch("/api/v1/geoplus/uploads/datasets", {
+    method: "POST",
     body: formData,
-    credentials: 'include',
   });
 
   if (!response.ok) {

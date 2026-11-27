@@ -370,6 +370,20 @@ export function sessionUser(session: AccountSession): { id: string; name: string
 // Cookies (ID-29: HttpOnly, SameSite=Lax, no Domain; Secure outside dev; one name per application)
 // ---------------------------------------------------------------------------------------------------------------
 
+/** True once the 30-day sign-in (not just the access token) is over. */
+export const signInHasEnded = (session: AccountSession, now: number) => now >= session.signedInAt + SIGN_IN_MAX_LIFETIME_SECONDS;
+
+/** The person from a sealed session, or null when it does not open or the 30-day sign-in has ended. No network call. */
+export function userIfSignedIn(
+  config: AccountClientConfig,
+  sealed: string | null | undefined,
+  now: number,
+): { id: string; name: string; email: string } | null {
+  const session = unsealSession(config, sealed);
+  if (!session || signInHasEnded(session, now)) return null;
+  return sessionUser(session);
+}
+
 export type CookieOptions = {
   httpOnly: true;
   sameSite: "lax";

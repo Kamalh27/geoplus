@@ -15,12 +15,6 @@ export const CALLBACK_PATH = "/auth/callback";
 export const SIGNED_OUT_PATH = "/auth/signed-out";
 export const AUTH_ERROR_PATH = "/auth/error";
 
-/**
- * Core's own cookie, still read during the move to Account sign-in (until P3-b4 sends core calls through the
- * GeoPlus server with a bearer token).
- */
-export const AUTH_COOKIE_NAME = "access_token";
-
 /** Core frontend in development (core web runs on 3010; 3000 belongs to another project). */
 const DEFAULT_CORE_FRONTEND_URL = "http://localhost:3010";
 

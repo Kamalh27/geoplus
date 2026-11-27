@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { GeoPlusShell } from "@/components/geoplus-shell";
-import { CORE_BACKEND_URL } from "@/lib/geoplus/dashboard-storage";
-import { AUTH_COOKIE_NAME } from "@/lib/geoplus/auth";
-import { loadAccountConfig, sessionCookieName, sessionUser, unsealSession } from "@/lib/server/account-session";
+import { loadAccountConfig, nowSeconds, sessionCookieName, userIfSignedIn } from "@/lib/server/account-session";
+import { coreBackendUrl, fetchCoreAnonymously, fetchCoreWithCurrentSession } from "@/lib/server/core-proxy";
 import type { GeoPlusLayerItem, GeoPlusUser } from "@/components/geoplus/types";
 
 export const metadata: Metadata = {
@@ -43,64 +42,31 @@ function normalizeIdentifierParam(value: string | string[] | undefined): string 
   return normalized && SAFE_IDENTIFIER_PATTERN.test(normalized) ? normalized : null;
 }
 
-const CORE_AUTH_ME_ENDPOINT = `${CORE_BACKEND_URL}/api/v1/users/me`;
-
 /**
  * The person signed in to GeoPlus through Spadace Account (sealed session cookie, P3-b3): profile fields from the
- * checked ID token, read without a network call. Renewal happens where the Account token is used (P3-b4).
+ * checked ID token, read without a network call. Null once the 30-day sign-in has ended, so the header never shows
+ * "signed in" while every call answers 401.
  */
-async function getAccountUser(): Promise<GeoPlusUser | null> {
+async function getAuthenticatedUser(sealedSession: string | undefined): Promise<GeoPlusUser | null> {
   const config = loadAccountConfig();
   if (!config) return null;
-  const cookieStore = await cookies();
-  const session = unsealSession(config, cookieStore.get(sessionCookieName(config))?.value);
-  if (!session) return null;
-  const user = sessionUser(session);
+  const user = userIfSignedIn(config, sealedSession, nowSeconds());
+  if (!user) return null;
   return { id: user.id, name: user.name || user.email || "Signed-in user", email: user.email };
 }
 
-async function getAuthenticatedUser(): Promise<GeoPlusUser | null> {
-  const accountUser = await getAccountUser();
-  if (accountUser) return accountUser;
-
-  // Transitional (until P3-b4): core's own cookie, when the browser still has one.
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(AUTH_COOKIE_NAME)?.value;
-
-  if (!sessionToken) return null;
-
-  try {
-    const response = await fetch(CORE_AUTH_ME_ENDPOINT, {
-      headers: {
-        "Cookie": `${AUTH_COOKIE_NAME}=${sessionToken}`,
-      },
-      cache: "no-store",
-    });
-
-    if (response.ok) {
-      const userData = await response.json() as Partial<{
-        user_id: string | number;
-        id: string | number;
-        uid: string;
-        name: string;
-        email: string;
-        profile_image_url: string;
-        avatarUrl: string;
-        tenant_id: number;
-      }>;
-      return {
-        id: userData.user_id?.toString() || userData.id?.toString() || userData.uid || "unknown-id",
-        name: userData.name || "Unknown User",
-        email: userData.email || "",
-        avatarUrl: userData.profile_image_url || userData.avatarUrl,
-        tenantId: typeof userData.tenant_id === "number" ? userData.tenant_id : undefined,
-      };
-    }
-  } catch (error) {
-    console.error("Failed to fetch authenticated user:", error);
-  }
-
-  return null;
+/**
+ * A GET to core for this page's first paint (P3-b4). A public dashboard is always read anonymously (least
+ * privilege: it must show for anyone, whatever their organisation). Anything else uses the session's access token as
+ * it is: a page cannot write the renewed session cookie, so it never renews; with no usable token this answers null
+ * and the browser loads the same data through `/api/core`, which renews.
+ */
+async function coreGet(sealedSession: string | undefined, path: string, anonymous = false): Promise<Response | null> {
+  const base = coreBackendUrl();
+  if (anonymous) return fetchCoreAnonymously(path, { fetch, coreBaseUrl: base });
+  const config = loadAccountConfig();
+  if (!config || !sealedSession) return null;
+  return fetchCoreWithCurrentSession(config, sealedSession, path, {}, { fetch, now: nowSeconds, coreBaseUrl: base });
 }
 
 export default async function GeoPlusPage({ searchParams }: PageProps) {
@@ -108,23 +74,24 @@ export default async function GeoPlusPage({ searchParams }: PageProps) {
   const dashboardId = normalizeIdentifierParam(sp.id);
   const publicDashboard = normalizeParam(sp.public) === "1";
   const requestedProjectUid = normalizeIdentifierParam(sp.project_uid);
+  const config = loadAccountConfig();
   const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(AUTH_COOKIE_NAME)?.value;
+  const sealedSession = config ? cookieStore.get(sessionCookieName(config))?.value : undefined;
 
   const [user, dashboardPayload] = await Promise.all([
-    getAuthenticatedUser(),
+    getAuthenticatedUser(sealedSession),
     (async () => {
       if (!dashboardId) return { layers: [] as GeoPlusLayerItem[], projectUid: null as string | null };
-      if (!sessionToken && !publicDashboard) return { layers: [] as GeoPlusLayerItem[], projectUid: null as string | null };
+      if (!sealedSession && !publicDashboard) return { layers: [] as GeoPlusLayerItem[], projectUid: null as string | null };
 
       try {
         const endpoint = publicDashboard
-          ? `${CORE_BACKEND_URL}/api/v1/geoplus/dashboards/${encodeURIComponent(dashboardId)}/public`
-          : `${CORE_BACKEND_URL}/api/v1/geoplus/dashboards/${encodeURIComponent(dashboardId)}`;
-        const response = await fetch(endpoint, { 
-          cache: "no-store",
-          headers: sessionToken ? { "Cookie": `${AUTH_COOKIE_NAME}=${sessionToken}` } : undefined,
-        });
+          ? `/api/v1/geoplus/dashboards/${encodeURIComponent(dashboardId)}/public`
+          : `/api/v1/geoplus/dashboards/${encodeURIComponent(dashboardId)}`;
+        const response = await coreGet(sealedSession, endpoint, publicDashboard);
+        if (!response) {
+          return { layers: [] as GeoPlusLayerItem[], projectUid: null as string | null };
+        }
         if (response.ok) {
           const data = await response.json() as Partial<{
             layers: GeoPlusLayerItem[];
@@ -148,17 +115,14 @@ export default async function GeoPlusPage({ searchParams }: PageProps) {
 
   const resolvedProjectUid = requestedProjectUid ?? dashboardPayload.projectUid;
   const resolvedProjectName = await (async () => {
-    if (!resolvedProjectUid || !sessionToken) {
+    if (!resolvedProjectUid || !sealedSession) {
       return null;
     }
 
     try {
-      const response = await fetch(`${CORE_BACKEND_URL}/api/v1/projects/${encodeURIComponent(resolvedProjectUid)}`, {
-        cache: "no-store",
-        headers: { "Cookie": `${AUTH_COOKIE_NAME}=${sessionToken}` },
-      });
+      const response = await coreGet(sealedSession, `/api/v1/projects/${encodeURIComponent(resolvedProjectUid)}`);
 
-      if (!response.ok) {
+      if (!response || !response.ok) {
         return null;
       }
 

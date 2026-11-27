@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getLogoutCookieOptions, resolveSafeNextUrl } from "./logout.ts";
+import { resolveSafeNextUrl } from "./logout.ts";
 
 const requestUrl = new URL("https://geoplus.example.com/api/geoplus/auth/logout?next=/foo");
 
@@ -24,20 +24,4 @@ test("resolveSafeNextUrl falls back to / for cross-origin and malformed targets"
   for (const candidate of unsafe) {
     assert.equal(resolveSafeNextUrl(candidate, requestUrl).toString(), "https://geoplus.example.com/", String(candidate));
   }
-});
-
-test("getLogoutCookieOptions derives domain and secure from env", () => {
-  assert.deepEqual(getLogoutCookieOptions({ AUTH_COOKIE_DOMAIN: ".spadace.com", NODE_ENV: "production" }), {
-    path: "/",
-    domain: ".spadace.com",
-    maxAge: 0,
-    httpOnly: true,
-    secure: true,
-    sameSite: "lax",
-  });
-
-  const hostOnly = getLogoutCookieOptions({ AUTH_COOKIE_DOMAIN: "", NODE_ENV: "development" });
-  assert.equal("domain" in hostOnly, false);
-  assert.equal(hostOnly.secure, false);
-  assert.equal(hostOnly.httpOnly, true);
 });

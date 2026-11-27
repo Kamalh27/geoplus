@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { SIGNED_OUT_PATH } from "@/lib/geoplus/auth";
-import { getLogoutCookieOptions } from "@/lib/geoplus/logout";
 import {
   endSessionUrl,
   isSameOriginRequest,
@@ -16,7 +15,7 @@ import {
 
 /**
  * Sign-out (identity.md 5.3): `POST` only, same-origin only (ID-29). Revokes the refresh token, clears the sealed
- * session cookie (and core's old cookies, still read until P3-b4), and answers `{ redirect_to }`: Account's
+ * session cookie, and answers `{ redirect_to }`: Account's
  * end-session address, which returns the browser to `/auth/signed-out`.
  */
 export async function POST(request: NextRequest) {
@@ -38,12 +37,6 @@ export async function POST(request: NextRequest) {
   if (config) {
     const cleared = sessionCookie(config, null, nowSeconds(), nowSeconds());
     response.cookies.set(cleared.name, cleared.value, cleared.options);
-  }
-
-  // Core's old shared cookies (transitional; the domain must match what core sets, host-only when unset).
-  const legacy = getLogoutCookieOptions(process.env);
-  for (const name of ["access_token", "refresh_token", "tenant_uid", "tenant_slug"]) {
-    response.cookies.set(name, "", legacy);
   }
 
   return response;

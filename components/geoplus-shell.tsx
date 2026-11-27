@@ -32,7 +32,7 @@ import { SaveDashboardDialog } from "@/components/geoplus/save-dashboard-dialog"
 import { hydrateDashboardLayers, requiresDashboardLayerHydration } from "@/lib/geoplus/dashboard-hydration";
 import { readCachedDashboard, writeCachedDashboard } from "@/lib/geoplus/dashboard-cache-storage";
 import { clearDashboardDraft, readDashboardDraft, writeDashboardDraft } from "@/lib/geoplus/dashboard-draft-storage";
-import { CORE_BACKEND_URL } from "@/lib/geoplus/dashboard-storage";
+import { coreFetch } from "@/lib/geoplus/core-api";
 import { shouldAutoAnalyzeUpload } from "@/lib/geoplus/upload-routing";
 
 const workspaceTabs: {
@@ -555,10 +555,7 @@ export function GeoPlusShell({
           setDashboardBootstrapLayers(cachedDashboard.data.layers);
         }
 
-        const response = await fetch(`${CORE_BACKEND_URL}/api/v1/geoplus/dashboards/${initialDashboardId}`, {
-          cache: "no-store",
-          credentials: "include",
-        });
+        const response = await coreFetch(`/api/v1/geoplus/dashboards/${encodeURIComponent(initialDashboardId)}`);
 
         if (!response.ok) {
           throw new Error(`Failed to load dashboard ${initialDashboardId}: ${response.status} ${response.statusText}`);

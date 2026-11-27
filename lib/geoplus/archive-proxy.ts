@@ -2,7 +2,7 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import type { NextRequest } from "next/server";
 import { Agent } from "undici";
-import { AUTH_COOKIE_NAME } from "@/lib/geoplus/auth";
+import { loadAccountConfig, nowSeconds, sessionCookieName, signInHasEnded, unsealSession } from "@/lib/server/account-session";
 
 const REQUEST_HEADER_NAMES = ["range", "if-none-match", "if-modified-since"] as const;
 const RESPONSE_HEADER_NAMES = [
@@ -295,7 +295,21 @@ export const fetchValidatedArchiveResponse = async (args: {
   throw new ArchiveProxyUrlError("Too many upstream redirects.");
 };
 
-export const hasArchiveProxySession = (request: NextRequest) => Boolean(request.cookies.get(AUTH_COOKIE_NAME)?.value);
+/**
+ * True when the request carries a GeoPlus sign-in (the sealed Account session cookie opens and the 30-day sign-in has
+ * not ended). Checked locally, no network call. Core's own cookie no longer counts.
+ */
+export const hasArchiveProxySession = (request: NextRequest, now: () => number = nowSeconds) => {
+  let config;
+  try {
+    config = loadAccountConfig();
+  } catch {
+    return false;
+  }
+  if (!config) return false;
+  const session = unsealSession(config, request.cookies.get(sessionCookieName(config))?.value);
+  return Boolean(session && !signInHasEnded(session, now()));
+};
 
 /**
  * Wrap an upstream body so that at most `maxBytes` are forwarded. When the cap is hit the upstream

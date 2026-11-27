@@ -51,7 +51,7 @@ Cache helpers: `lib/geoplus/dashboard-cache-storage.ts`.
 
 - This app contains only GeoPlus-focused code. The original `website` app is left untouched for incremental migration.
 - No backend in this directory — it talks to `platform/core/backend` APIs.
-- `NEXT_PUBLIC_CORE_BACKEND_URL` controls the backend base URL (dev default `http://localhost:8010`; ports 3000/8000/8001 belong to another project).
+- `CORE_BACKEND_URL` (server-only; falls back to `NEXT_PUBLIC_CORE_BACKEND_URL`, dev default `http://localhost:8010`; ports 3000/8000/8001 belong to another project) is the backend base URL. The browser never calls core with credentials: see "Calling core".
 
 ## Sign-in (Spadace Account, plan P3-b3)
 
@@ -65,3 +65,22 @@ Cache helpers: `lib/geoplus/dashboard-cache-storage.ts`.
   cookie before the access token is used. Concurrent refreshes are coalesced per process only (see the module comment).
 - Settings: `.env.example` (`ACCOUNT_*`, `GEOPLUS_SESSION_KEY`). Local fake Account: core's `just fake-account`
   (port 8059, secret `fake-secret-geoplus-web-dev`).
+
+## Calling core (plan P3-b4)
+
+- Browser code calls `coreFetch("/api/v1/...")` (`lib/geoplus/core-api.ts`), which goes to this origin's
+  `/api/core/api/v1/...`. `app/api/core/[...path]/route.ts` + `lib/server/core-proxy.ts` add
+  `Authorization: Bearer <access token>` (audience `geoplus`) from the sealed session cookie, renew it with
+  `ensureFreshSession` (rotated cookie written on the answer), and stream bodies both ways.
+- Rules (tested): path allow-list `/api/v1/...` only; no cookie ever forwarded to core; request/response headers on
+  an allow-list; state-changing calls same-origin only; `redirect: "error"` upstream; no token logging.
+  No session or core 401 -> 401 `{error:"signed_out", login_url}`; Account unreachable -> 503 (session kept); core
+  unreachable -> 502, no headers within 60 s -> 504 (timer cleared once headers arrive, streams are not cut).
+  If renewal fails but the access token is still valid the call proceeds with it; 503 only once it has expired.
+- `coreFetch` reads a 401 `signed_out` answer and sends the browser to its `login_url` (re-sanitised; at most once
+  per 30 s via sessionStorage).
+- `app/page.tsx` reads core with the access token as it is (`fetchCoreWithCurrentSession`): a page cannot write the
+  renewed cookie, so it never renews; without a usable token the browser loads the data through the proxy. Public
+  dashboards are read anonymously (`fetchCoreAnonymously`, no bearer). The header user is null after the 30-day limit.
+- Saved dashboard files under `/static/uploads/dashboards/` are public and still fetched from core directly, without
+  credentials (`buildDashboardLayerFetchTargets`).

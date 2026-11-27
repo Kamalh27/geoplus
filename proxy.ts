@@ -8,6 +8,8 @@ import type { NextRequest } from "next/server";
  * Documented trade-offs:
  *  - connect-src allows any https: origin because GeoPlus lets users load arbitrary remote
  *    geospatial services (COG, PMTiles, WMS/WFS, tile servers) directly from the browser.
+ *  - core is not in connect-src on purpose: the browser calls core only through this origin (/api/core, 'self').
+ *    (Public dashboard files under /static/uploads/dashboards/ come from core over https:, or localhost in dev.)
  *  - style-src keeps 'unsafe-inline' because MapLibre/deck.gl/Radix set inline style attributes,
  *    which nonces cannot cover. Script execution is what the nonce protects.
  */
